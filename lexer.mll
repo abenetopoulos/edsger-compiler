@@ -4,6 +4,7 @@
     open Printf    
 
     exception SyntaxError of string
+    exception PreprocessorError of string
 
     let next_line lexbuf = 
         let pos = lexbuf.lex_curr_p in
@@ -28,26 +29,38 @@ let keyword = "bool" | "break" | "byref" | "char" | "continue" | "delete" | "dou
 let op = ['=' '>' '<' '+' '-' '*' '/' '%' '&' '!' '?' ':' ','] | "==" | "!=" | '>' | '<' | ">=" | "<=" | "&&" | "||" | "++" | "--" | "+=" | "-=" | "*=" | "/=" | "%="
 let separator = [';' '(' ')' '[' ']' '{' '}']
 
-rule read = 
+rule read incFiles= 
     parse
-    | white {read lexbuf}
-    | newline {next_line lexbuf; read lexbuf}
-    | "//" [^ '\n']* {printf "Single line comment\n"; read lexbuf}
-    | "/*" {read_comment lexbuf.lex_curr_p.pos_lnum lexbuf; read lexbuf}
-    | const_char {printf "Constant char %s\n" (Lexing.lexeme lexbuf); read lexbuf}
-    | int_in {printf "Integer %d (%s)\n" (int_of_string (Lexing.lexeme lexbuf)) (Lexing.lexeme lexbuf); read lexbuf}
-    | float_in {printf "Float %f (%s)\n" (float_of_string (Lexing.lexeme lexbuf)) (Lexing.lexeme lexbuf); read lexbuf}
-    | '"' {read_string (Buffer.create 17) lexbuf}
-    | "#include" { (); read lexbuf}
-    | keyword {printf "Keyword %s\n" (Lexing.lexeme lexbuf); read lexbuf}
-    | id {printf "Identifier %s\n" (Lexing.lexeme lexbuf); read lexbuf}
-    | op {printf "Operator %s\n" (Lexing.lexeme lexbuf); read lexbuf}
-    | separator {printf "Separator %s\n" (Lexing.lexeme lexbuf); read lexbuf}
+    | white {read incFiles lexbuf}
+    | newline {next_line lexbuf; read incFiles lexbuf}
+    | "//" [^ '\n']* {printf "Single line comment\n"; read incFiles lexbuf}
+    | "/*" {read_comment lexbuf.lex_curr_p.pos_lnum incFiles lexbuf; read incFiles lexbuf}
+    | const_char {printf "Constant char %s\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | int_in {printf "Integer %d (%s)\n" (int_of_string (Lexing.lexeme lexbuf)) (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | float_in {printf "Float %f (%s)\n" (float_of_string (Lexing.lexeme lexbuf)) (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | '"' {let str = read_string (Buffer.create 17) lexbuf in printf "String %S\n" str; read incFiles lexbuf}
+    | "#include" {start_include incFiles lexbuf; read incFiles lexbuf}
+    | keyword {printf "Keyword %s\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | id {printf "Identifier %s\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | op {printf "Operator %s\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | separator {printf "Separator %s\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
     | eof {raise End_of_file}
-    | _ {printf "Invalid token %s on line %d\n" (Lexing.lexeme lexbuf) lexbuf.lex_curr_p.pos_lnum; read lexbuf}
+    | _ {printf "Invalid token %s on line %d\n" (Lexing.lexeme lexbuf) lexbuf.lex_curr_p.pos_lnum; read incFiles lexbuf}
+and start_include incFiles=
+    parse
+    | '"' {let fileName = read_string (Buffer.create 17) lexbuf in 
+           if (not (List.exists (fun x -> x = fileName) incFiles)) then
+                let inF = open_in fileName in
+                let lbuf = Lexing.from_channel inF in
+                try read (fileName :: incFiles) lbuf 
+                with End_of_file -> ()
+           else
+               exit 1
+          }
+    | [' ']* {start_include incFiles lexbuf}
 and read_string buf =
     parse
-    | '"'       { printf "String \"%S\"\n" (Buffer.contents buf);  read lexbuf }
+    | '"'       { (Buffer.contents buf)}
     | '\\' '/'  { Buffer.add_char buf '/'; read_string buf lexbuf }
     | '\\' '\\' { Buffer.add_char buf '\\'; read_string buf lexbuf }
     | '\\' 'b'  { Buffer.add_char buf '\b'; read_string buf lexbuf }
@@ -61,10 +74,10 @@ and read_string buf =
         }
     | _ { raise (SyntaxError ("Illegal string character: " ^ Lexing.lexeme lexbuf)) }
     | eof { raise (SyntaxError ("String is not terminated")) }
-and read_comment startLine=
+and read_comment startLine incFiles=
     parse
-    | "*/"      {printf "Comment\n"; read lexbuf}
-    | _         {read_comment startLine lexbuf}
+    | "*/"      {printf "Comment\n"; read incFiles lexbuf}
+    | _         {read_comment startLine incFiles lexbuf}
     | eof 
         { let errString = sprintf "Comment starting on line %d is not terminated" startLine in
           raise (SyntaxError errString)}
@@ -77,7 +90,7 @@ and read_comment startLine=
             else stdin
         in
         let lexbuf = Lexing.from_channel cin in
-        try read lexbuf
+        try read [] lexbuf
         with End_of_file -> ()
 
     let _ = Printexc.print main ()
