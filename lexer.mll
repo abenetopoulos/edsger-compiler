@@ -1,10 +1,10 @@
+(*TODO(achilles): we need to create a type to hold the name of the file we are currently
+ * reading from, to be able to provide better error messages*)
 {
-
     open Lexing
     open Printf    
 
     exception SyntaxError of string
-    exception PreprocessorError of string
 
     let next_line lexbuf = 
         let pos = lexbuf.lex_curr_p in
@@ -55,6 +55,7 @@ and start_include incFiles=
                 try read (fileName :: incFiles) lbuf 
                 with End_of_file -> ()
            else
+               printf "Cyclical \"#include\"s found. Exiting\n";
                exit 1
           }
     | [' ']* {start_include incFiles lexbuf}
