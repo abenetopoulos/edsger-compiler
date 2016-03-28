@@ -54,9 +54,10 @@ and start_include incFiles=
                 let lbuf = Lexing.from_channel inF in
                 try read (fileName :: incFiles) lbuf 
                 with End_of_file -> ()
-           else
+           else begin
                printf "Cyclical \"#include\"s found. Exiting\n";
                exit 1
+           end
           }
     | [' ']* {start_include incFiles lexbuf}
 and read_string buf =
