@@ -1,3 +1,7 @@
 // Invalid reals
+
+// This one should pass, but not as a real
 42,1
+
+// This one should cause an error
 42.

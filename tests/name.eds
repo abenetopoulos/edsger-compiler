@@ -1,2 +1,2 @@
-// WRONG name
+// Should fail, it contains an invalid name
 _abcde

@@ -1,3 +1,2 @@
-// This file shouldn't pass the lexer.
-'b'
+// This file shouldn't pass the lexer since it tries to pass a string as a char
 'ii'
