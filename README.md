@@ -1,7 +1,7 @@
 Compilers 2016, Flow L;
 National Technical University of Athens;
-Achilles Benetopoulos 031 12 614
-Emmanouil Theodosis   031 12 026
+Achilles Benetopoulos 031 12 614;
+Emmanouil Theodosis   031 12 026;
 
 Our compiler will be in OCaml. Any further general comments will be added here.
 
