@@ -76,6 +76,7 @@ and start_include incFiles=
 and read_string incFiles buf =
     parse
     | '"'       { (Buffer.contents buf)}
+    | '\n'      { printf "\x1b[31mError\x1b[0m - file '%s', line %d: Missing terminating '\"' character.\n" (List.hd incFiles) lexbuf.lex_curr_p.pos_lnum; exit 1}
     | '\\' '/'  { Buffer.add_char buf '/'; read_string incFiles buf lexbuf }
     | '\\' '\\' { Buffer.add_char buf '\\'; read_string incFiles buf lexbuf }
     | '\\' 'b'  { Buffer.add_char buf '\b'; read_string incFiles buf lexbuf }
@@ -83,7 +84,7 @@ and read_string incFiles buf =
     | '\\' 'n'  { Buffer.add_char buf '\n'; read_string incFiles buf lexbuf }
     | '\\' 'r'  { Buffer.add_char buf '\r'; read_string incFiles buf lexbuf }
     | '\\' 't'  { Buffer.add_char buf '\t'; read_string incFiles buf lexbuf }
-    | [^ '"' '\\']+
+    | [^ '"' '\\' '\n']+
         { Buffer.add_string buf (Lexing.lexeme lexbuf);
         read_string incFiles buf lexbuf
         }
