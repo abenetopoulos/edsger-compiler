@@ -1,0 +1,33 @@
+#include "stdio.h"
+// This is a file that should run giveth proper implementation of the lexer
+
+/* This comment */
+int a = 000, b = 01, c = 2435;
+/* should be different from this one */
+
+// These names should all work
+char abcde, A_cD;
+
+// Let's test keywords
+bool, break, double, else, new, NULL, byref, for, return, char, continue, delete, false, if, int, true, void;
+
+/* Real time */
+double 42.0, 42.2e1, 42.1E-123
+
+// Chars
+'a', '\'', '\x1d', '\r', '\0', '\\'
+
+// Strings
+char "abc", "\r\r\r\n", "this should end here";
+int a;
+"and not here";
+
+// Shouldn't raise an error if void main is missing
+bool not_main () {
+	/* Let's test a condition */
+	int a;
+	a = 5 > 3? 2: 4;
+	
+	// Is this an operator?
+	a += a
+}

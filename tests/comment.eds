@@ -1,0 +1,2 @@
+// This file shouldn't pass the lexer.
+/* It contains a never ending comment

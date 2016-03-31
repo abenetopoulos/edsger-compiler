@@ -1,0 +1,3 @@
+//This shouldn't pass the lexer.
+"It contains
+a string in 2 lines."
