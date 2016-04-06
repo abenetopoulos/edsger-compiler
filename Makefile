@@ -4,8 +4,11 @@ lexer: lexer.ml
 lexer.ml: lexer.mll
 	ocamllex $<
 
+parser.ml : parser.mly
+	menhir -v $<
+
 clean:
-	$(RM) lexer.cm* lexer.o
+	$(RM) lexer.cm* lexer.o parser.mli parser.automaton parser.conflicts
 
 distclean: clean
 	$(RM) lexer lexer.ml

@@ -4,6 +4,10 @@
 %token <string> ID
 %token <char> CHAR
 %token <string> STRING
+%token INT_T
+%token CHAR_T
+%token BOOL_T
+%token DOUBLE_T
 %token SEMICOLON
 %token COMMA
 %token LEFT_BRACKET
@@ -80,10 +84,10 @@ object_type:
     ;
 
 basic_type:
-    | INT                                                                  { None }
-    | CHAR                                                                 { None }
-    | BOOL                                                                 { None }
-    | DOUBLE                                                               { None }
+    | INT_T                                                                  { None }
+    | CHAR_T                                                                 { None }
+    | BOOL_T                                                                 { None }
+    | DOUBLE_T                                                               { None }
     ;
 
 declarator:
@@ -95,12 +99,8 @@ array_def:
     ;
 
 fun_declaration:
-    | result_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON { None }
-    ;
-
-result_type:
-    | object_type                                                          { None }
-    | VOID                                                                 { None }
+    | VOID ; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON { None }
+    | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON { None }
     ;
 
 parameter_list:
@@ -116,7 +116,8 @@ parameter:
     ;
 
 fun_definition:
-    | result_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; declaration*; statement*; RIGHT_CURL                                                                 { None }
+    | VOID; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; declaration*; statement*; RIGHT_CURL                                                                 { None }
+    | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; declaration*; statement*; RIGHT_CURL                                                                 { None }
     ;
 
 statement:
