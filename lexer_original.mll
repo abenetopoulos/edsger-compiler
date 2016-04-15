@@ -1,7 +1,6 @@
 {
     open Lexing
     open Printf    
-    open Parser_experimental
 
     exception SyntaxError of string
 
@@ -25,7 +24,7 @@ let newline = '\r' | '\n'
 let id = ['a'-'z' 'A'-'Z']['a'-'z' 'A'-'Z' '_' '0'-'9']*
 let keyword = "bool" | "break" | "byref" | "char" | "continue" | "delete" | "double" | "else" | "for" | "false" | "if" | "int" | "new" | "NULL" | "return" | "true" | "void"
 
-let op = ['=' '>' '<' '+' '-' '*' '/' '%' '&' '!' '?' ':' ','] | "==" | "!=" | ">=" | "<=" | "&&" | "||" | "++" | "--" | "+=" | "-=" | "*=" | "/=" | "%="
+let op = ['=' '>' '<' '+' '-' '*' '/' '%' '&' '!' '?' ':' ','] | "==" | "!=" | '>' | '<' | ">=" | "<=" | "&&" | "||" | "++" | "--" | "+=" | "-=" | "*=" | "/=" | "%="
 let separator = [';' '(' ')' '[' ']' '{' '}']
 
 rule read incFiles= 
@@ -34,42 +33,12 @@ rule read incFiles=
     | newline {next_line lexbuf; read incFiles lexbuf}
     | "//" [^ '\n']* {printf "Single line comment %S\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
     | "/*" {let com = (read_comment lexbuf.lex_curr_p.pos_lnum incFiles (Buffer.create 80) lexbuf) in printf "Comment \"/*%s*/\"\n" com; read incFiles lexbuf}
-    | keyword {
-        match (Lexing.lexeme lexbuf) with
-            "bool" -> IF
-        |   "break" -> BREAK
-        |   "byref" -> BYREF
-        |   "char" -> CHAR_T
-        |   "continue" -> CONTINUE
-        |   "delete" -> DELETE
-        |   "double" -> DOUBLE_T
-        |   "else" -> ELSE
-        |   "for" -> FOR
-        |   "false" -> FALSE
-        |   "if" -> IF
-        |   "int" -> INT_T
-        |   "new" -> NEW
-        |   "NULL" -> NULL
-        |   "return" -> RETURN
-        |   "true" -> TRUE
-        |   _ -> VOID
-    }
-    | id {
-        ID (Lexing.lexeme lexbuf)
-    }
-    | const_char {
-        CHAR (String.get (Lexing.lexeme lexbuf) 0)
-    }
-    | int_in {
-        INT (int_of_string (Lexing.lexeme lexbuf)) 
-    }
-    | float_in {
-        DOUBLE (float_of_string (Lexing.lexeme lexbuf))
-    }
-    | '"' {
-        let str = read_string incFiles (Buffer.create 80) lexbuf in
-        STRING str
-    }
+    | keyword {printf "Keyword \"%s\"\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | id {printf "Identifier \"%s\"\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | const_char {printf "Constant char '%s'\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | int_in {printf "Integer %d (%s)\n" (int_of_string (Lexing.lexeme lexbuf)) (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | float_in {printf "Float %f (%s)\n" (float_of_string (Lexing.lexeme lexbuf)) (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | '"' {let str = read_string incFiles (Buffer.create 80) lexbuf in printf "String %S\n" str; read incFiles lexbuf}
     | "#include" {let lineOffset = lexbuf.lex_curr_p.pos_cnum - lexbuf.lex_curr_p.pos_bol - 8 in
                   let currentFileName = List.hd incFiles in
                   begin
@@ -83,46 +52,9 @@ rule read incFiles=
                       end
                   end
                   }
-    | op {
-        match (Lexing.lexeme lexbuf) with
-            "=" -> ASSIGN
-        |   ">" -> BINARY_GREATER
-        |   "<" -> BINARY_LESS
-        |   "+" -> BINARY_PLUS
-        |   "-" -> BINARY_MINUS
-        |   "*" -> BINARY_MULTI
-        |   "/" -> BINARY_DIVISION
-        |   "%" -> BINARY_MODULO
-        |   "&" -> UNARY_AND
-        |   "!" -> NOT
-        |   "?" -> QUESTION_MARK
-        |   ":" -> COLON
-        |   "," -> COMMA
-        |   "==" -> BINARY_EQ
-        |   "!=" -> BINARY_NOTEQ
-        |   ">=" -> BINARY_GREATEREQ
-        |   "<=" -> BINARY_LESSEQ
-        |   "&&" -> BINARY_AND
-        |   "||" -> BINARY_OR
-        |   "++" -> PLUSPLUS
-        |   "--" -> MINUSMINUS
-        |   "+=" -> ASSIGN_PLUS
-        |   "-=" -> ASSIGN_MINUS
-        |   "*=" -> ASSIGN_MULTI
-        |   "/=" -> ASSIGN_DIV
-        |   _ -> ASSIGN_DIV
-    }
-    | separator { 
-        match (Lexing.lexeme lexbuf) with
-            ";" -> SEMICOLON
-        |   "(" -> LEFT_PAREN
-        |   ")" -> RIGHT_PAREN
-        |   "[" -> LEFT_BRACKET
-        |   "]" -> RIGHT_BRACKET
-        |   "{" -> LEFT_CURL
-        |   _ -> RIGHT_CURL
-    }
-    | eof {EOF}
+    | op {printf "Operator '%s'\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | separator {printf "Separator '%s'\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
+    | eof {raise End_of_file}
     | _ {printf "\x1b[31mError\x1b[0m - file '%s', line %d: Invalid token '%s'.\n" (List.hd incFiles) lexbuf.lex_curr_p.pos_lnum (Lexing.lexeme lexbuf) ; exit 1}
 and start_include incFiles=
     parse
@@ -130,7 +62,8 @@ and start_include incFiles=
            if (not (List.exists (fun x -> x = fileName) incFiles)) then
                 let inF = open_in fileName in
                 let lbuf = Lexing.from_channel inF in
-                read (fileName :: incFiles) lbuf
+                try read (fileName :: incFiles) lbuf 
+                with End_of_file -> ()
            else
                let currentFileName = List.hd incFiles in 
                begin
@@ -164,3 +97,17 @@ and read_comment startLine incFiles buf=
     | eof 
         { printf "\x1b[31mError\x1b[0m - file '%s', line %d: Comment starting on this line is not terminated.\n" (List.hd incFiles) startLine;
           exit 1}
+
+{
+    let main () =
+        let cin,fname =
+            if Array.length Sys.argv > 1
+            then open_in Sys.argv.(1), Sys.argv.(1)
+            else stdin, "stdin"
+        in
+        let lexbuf = Lexing.from_channel cin in
+        try read [fname] lexbuf
+        with End_of_file -> ()
+
+    let _ = Printexc.print main ()
+}
