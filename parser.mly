@@ -1,6 +1,5 @@
 %token <int> INT
 %token <float> DOUBLE
-%token <bool> BOOL 
 %token <string> ID
 %token <char> CHAR
 %token <string> STRING
@@ -9,7 +8,6 @@
 %token BOOL_T
 %token DOUBLE_T
 %token SEMICOLON
-%token COMMA
 %token LEFT_BRACKET
 %token RIGHT_BRACKET
 %token LEFT_PAREN
@@ -31,25 +29,22 @@
 %token QUESTION_MARK
 %token NEW
 %token DELETE
-%token UNARY_MULTI
-%token UNARY_AND
-%token UNARY_PLUS
-%token UNARY_MINUS
 %token NOT
-%token BINARY_MULTI
-%token BINARY_DIVISION
-%token BINARY_MODULO
-%token BINARY_PLUS
-%token BINARY_MINUS
-%token BINARY_LESS
-%token BINARY_GREATER
-%token BINARY_LESSEQ
-%token BINARY_GREATEREQ
-%token BINARY_EQ
-%token BINARY_NOTEQ
-%token BINARY_AND
-%token BINARY_OR
-%token BINARY_COMMA
+%token MULTI
+%token DIV
+%token MOD
+%token PLUS
+%token MINUS
+%token AMBER
+%token LESS
+%token GREATER
+%token LESSEQ
+%token GREATEREQ
+%token EQ
+%token NOTEQ
+%token AND
+%token OR
+%token COMMA
 %token PLUSPLUS
 %token MINUSMINUS
 %token ASSIGN
@@ -59,11 +54,31 @@
 %token ASSIGN_PLUS
 %token ASSIGN_MINUS
 
-%start <string> prog
+%start <'a option> prog
+
+%left COMMA
+%right ASSIGN ASSIGN_MULTI ASSIGN_DIV ASSIGN_MOD ASSIGN_PLUS ASSIGN_MINUS
+%right QUEST
+%nonassoc QUESTION_MARK
+%left BINARY
+%left OR
+%left AND
+%nonassoc EQ NOTEQ GREATEREQ GREATER LESSEQ LESS
+%left PLUS MINUS
+%left MULTI DIV MOD
+%nonassoc LEFT_PAREN
+%nonassoc PLUSPLUS MINUSMINUS
+%nonassoc NEW DELETE
+%nonassoc AMBER
+%nonassoc PLUSPLUS_PRE
+%nonassoc LEFT_BRACKET
+%nonassoc LOWER_THAN_ELSE
+%nonassoc ELSE
+
 %%
 
 prog:
-    | declaration*; declaration                                            { None }
+    | declaration; declaration*                                            { None }
     ;
 
 declaration:
@@ -80,7 +95,7 @@ other_decs:
     | COMMA; declarator;                                                   { None }
 
 object_type:
-    | basic_type; UNARY_MULTI*                                                   { None }
+    | basic_type; MULTI*                                                   { None }
     ;
 
 basic_type:
@@ -99,7 +114,7 @@ array_def:
     ;
 
 fun_declaration:
-    | VOID ; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON { None }
+    | VOID ; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON       { None }
     | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON { None }
     ;
 
@@ -124,7 +139,8 @@ statement:
     | SEMICOLON                                                            { None }
     | expression; SEMICOLON                                                { None }
     | LEFT_CURL; statement*; RIGHT_CURL                                    { None }
-    | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement; else_clause?     { None }
+    | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement                   { None }     %prec LOWER_THAN_ELSE
+    | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement; ELSE; statement  { None }
     | label; FOR; LEFT_PAREN; expression?; SEMICOLON; expression?; SEMICOLON; expression?; RIGHT_PAREN; statement                                                                { None }
     | CONTINUE; ID?; SEMICOLON                                             { None }
     | BREAK; ID?; SEMICOLON                                                { None }
@@ -133,10 +149,6 @@ statement:
 
 label:
     | ID; COLON                                                            { None }
-    ;
-
-else_clause:
-    | ELSE; statement                                                      { None }
     ;
 
 expression:
@@ -150,14 +162,14 @@ expression:
     | DOUBLE                                                               { None }
     | STRING                                                               { None }
     | ID; LEFT_PAREN; expression_list?; RIGHT_PAREN                        { None }
-    | expression; LEFT_BRACKET; expression; RIGHT_BRACKET                  { None }
-    | unary_op; expression                                                 { None }
-    | expression; binary_op; expression                                    { None }
-    | unary_assign; expression                                             { None }
+    | expression; array_exp                                                { None } 
+    | unary_op; expression                                                 { None }     %prec AMBER
+    | expression; binary_op; expression                                    { None }     %prec BINARY
+    | unary_assign; expression                                             { None }     %prec PLUSPLUS_PRE
     | expression; unary_assign                                             { None }
-    | expression; binary_assign; expression                                { None }
-    | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { None }
-    | expression; QUESTION_MARK; expression; COLON; expression             { None }
+    | expression; binary_assign; expression                                { None }     %prec ASSIGN_MINUS
+    | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { None }     %prec LEFT_PAREN
+    | expression; QUESTION_MARK; expression; COLON; expression             { None }     %prec QUEST
     | NEW; object_type; array_exp?                                         { None }
     | DELETE; expression                                                   { None }
     ;
@@ -179,28 +191,28 @@ const_expr:
     ;
 
 unary_op:
-    | UNARY_AND                                                            { None }
-    | UNARY_MULTI                                                          { None }
-    | UNARY_PLUS                                                           { None }
-    | UNARY_MINUS                                                          { None }
+    | AMBER                                                                { None }
+    | MULTI                                                                { None }
+    | PLUS                                                                 { None }
+    | MINUS                                                                { None }
     | NOT                                                                  { None }
     ;
 
 binary_op:
-    | BINARY_MULTI                                                         { None }
-    | BINARY_DIVISION                                                      { None }
-    | BINARY_MODULO                                                        { None }
-    | BINARY_PLUS                                                          { None }
-    | BINARY_MINUS                                                         { None }
-    | BINARY_LESS                                                          { None }
-    | BINARY_GREATER                                                       { None }
-    | BINARY_LESSEQ                                                        { None }
-    | BINARY_GREATEREQ                                                     { None }
-    | BINARY_EQ                                                            { None }
-    | BINARY_NOTEQ                                                         { None }
-    | BINARY_AND                                                           { None }
-    | BINARY_OR                                                            { None }
-    | BINARY_COMMA                                                         { None }
+    | MULTI                                                                { None } 
+    | DIV                                                                  { None }
+    | MOD                                                                  { None }
+    | PLUS                                                                 { None }
+    | MINUS                                                                { None }
+    | LESS                                                                 { None }
+    | GREATER                                                              { None }
+    | LESSEQ                                                               { None }
+    | GREATEREQ                                                            { None }
+    | EQ                                                                   { None }
+    | NOTEQ                                                                { None }
+    | AND                                                                  { None }
+    | OR                                                                   { None }
+    | COMMA                                                                { None }
     ;
 
 unary_assign:
