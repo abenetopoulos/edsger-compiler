@@ -53,6 +53,7 @@
 %token ASSIGN_MOD
 %token ASSIGN_PLUS
 %token ASSIGN_MINUS
+%token EOF
 
 %start <'a option> prog
 
@@ -78,7 +79,7 @@
 %%
 
 prog:
-    | declaration; declaration*                                            { None }
+    | declaration; declaration*; EOF                                       { None }
     ;
 
 declaration:
@@ -170,8 +171,12 @@ expression:
     | expression; binary_assign; expression                                { None }     %prec ASSIGN_MINUS
     | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { None }     %prec LEFT_PAREN
     | expression; QUESTION_MARK; expression; COLON; expression             { None }     %prec QUEST
-    | NEW; object_type; array_exp?                                         { None }
     | DELETE; expression                                                   { None }
+    ;
+
+fuck_pointers:
+    | expression; MULTI; expression                                        { None }
+    | NEW; object_type; array_exp?                                         { None }
     ;
 
 array_exp:
@@ -199,7 +204,6 @@ unary_op:
     ;
 
 binary_op:
-    | MULTI                                                                { None } 
     | DIV                                                                  { None }
     | MOD                                                                  { None }
     | PLUS                                                                 { None }
