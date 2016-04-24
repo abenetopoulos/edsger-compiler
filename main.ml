@@ -6,7 +6,7 @@ let () =
     in
     let lexbuf = Lexing.from_channel cin in
     try
-        let _ = Parser_experimental.prog (Lexer.read [fname]) lexbuf in ()
+        let _ = Parser.prog (Lexer.read [fname]) lexbuf in ()
     with
     | Failure msg         -> print_endline ("Failure --- " ^ msg)
     | Parsing.Parse_error -> print_endline ("Parse error")

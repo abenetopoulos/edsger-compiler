@@ -1,7 +1,7 @@
 {
     open Lexing
     open Printf    
-    open Parser_experimental
+    open Parser
 
     exception SyntaxError of string
 
@@ -86,24 +86,24 @@ rule read incFiles=
     | op {
         match (Lexing.lexeme lexbuf) with
             "=" -> ASSIGN
-        |   ">" -> BINARY_GREATER
-        |   "<" -> BINARY_LESS
-        |   "+" -> BINARY_PLUS
-        |   "-" -> BINARY_MINUS
-        |   "*" -> BINARY_MULTI
-        |   "/" -> BINARY_DIVISION
-        |   "%" -> BINARY_MODULO
-        |   "&" -> UNARY_AND
+        |   ">" -> GREATER
+        |   "<" -> LESS
+        |   "+" -> PLUS
+        |   "-" -> MINUS
+        |   "*" -> MULTI
+        |   "/" -> DIVISION
+        |   "%" -> MODULO
+        |   "&" -> AMBER
         |   "!" -> NOT
         |   "?" -> QUESTION_MARK
         |   ":" -> COLON
         |   "," -> COMMA
-        |   "==" -> BINARY_EQ
-        |   "!=" -> BINARY_NOTEQ
-        |   ">=" -> BINARY_GREATEREQ
-        |   "<=" -> BINARY_LESSEQ
-        |   "&&" -> BINARY_AND
-        |   "||" -> BINARY_OR
+        |   "==" -> EQ
+        |   "!=" -> NOTEQ
+        |   ">=" -> GREATEREQ
+        |   "<=" -> LESSEQ
+        |   "&&" -> AND
+        |   "||" -> OR
         |   "++" -> PLUSPLUS
         |   "--" -> MINUSMINUS
         |   "+=" -> ASSIGN_PLUS
