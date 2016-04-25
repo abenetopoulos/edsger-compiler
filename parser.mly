@@ -201,6 +201,7 @@ unary_op:
 
 binary_op:
     | DIV                                                                  { None }
+    | MULTI                                                                { None }
     | MOD                                                                  { None }
     | PLUS                                                                 { None }
     | MINUS                                                                { None }
