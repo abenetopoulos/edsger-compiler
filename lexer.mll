@@ -32,11 +32,11 @@ rule read incFiles=
     parse
     | white {read incFiles lexbuf}
     | newline {next_line lexbuf; read incFiles lexbuf}
-    | "//" [^ '\n']* {printf "Single line comment %S\n" (Lexing.lexeme lexbuf); read incFiles lexbuf}
-    | "/*" {let com = (read_comment lexbuf.lex_curr_p.pos_lnum incFiles (Buffer.create 80) lexbuf) in printf "Comment \"/*%s*/\"\n" com; read incFiles lexbuf}
+    | "//" [^ '\n']* {(*printf "Single line comment %S\n" (Lexing.lexeme lexbuf);*) read incFiles lexbuf}
+    | "/*" {let _ = (read_comment lexbuf.lex_curr_p.pos_lnum incFiles (Buffer.create 80) lexbuf) in () (*printf "Comment \"/*%s*/\"\n" com*); read incFiles lexbuf}
     | keyword {
         match (Lexing.lexeme lexbuf) with
-            "bool" -> IF
+            "bool" -> BOOL_T
         |   "break" -> BREAK
         |   "byref" -> BYREF
         |   "char" -> CHAR_T

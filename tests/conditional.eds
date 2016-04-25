@@ -1,0 +1,22 @@
+#include "stdio.h"
+
+void main() {
+    bool boolTest;
+    int intTest;
+    int* a;
+
+    boolTest = 3 > 5 ? true : 10 > 5 ? true : false;
+
+    if (boolTest) {
+        writeString("correct\n");
+    }else {
+        writeString("incorrect\n");
+    }
+
+    a = new int;
+    *a = 42 % 17;
+    //test = *a ? true : false;
+    intTest = *a ? 3 * 7 : 4 * 9;
+
+    writeString("You should not have reached this point\n");
+}

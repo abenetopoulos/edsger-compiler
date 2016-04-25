@@ -142,7 +142,7 @@ statement:
     | LEFT_CURL; statement*; RIGHT_CURL                                    { None }
     | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement                   { None }     %prec LOWER_THAN_ELSE
     | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement; ELSE; statement  { None }
-    | label; FOR; LEFT_PAREN; expression?; SEMICOLON; expression?; SEMICOLON; expression?; RIGHT_PAREN; statement                                                                { None }
+    | label?; FOR; LEFT_PAREN; expression?; SEMICOLON; expression?; SEMICOLON; expression?; RIGHT_PAREN; statement                                                                { None }
     | CONTINUE; ID?; SEMICOLON                                             { None }
     | BREAK; ID?; SEMICOLON                                                { None }
     | RETURN; expression?; SEMICOLON                                       { None }
