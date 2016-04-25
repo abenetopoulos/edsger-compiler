@@ -171,12 +171,8 @@ expression:
     | expression; binary_assign; expression                                { None }     %prec ASSIGN_MINUS
     | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { None }     %prec LEFT_PAREN
     | expression; QUESTION_MARK; expression; COLON; expression             { None }     %prec QUEST
-    | DELETE; expression                                                   { None }
-    ;
-
-fuck_pointers:
-    | expression; MULTI; expression                                        { None }
     | NEW; object_type; array_exp?                                         { None }
+    | DELETE; expression                                                   { None }
     ;
 
 array_exp:

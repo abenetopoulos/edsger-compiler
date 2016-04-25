@@ -91,8 +91,8 @@ rule read incFiles=
         |   "+" -> PLUS
         |   "-" -> MINUS
         |   "*" -> MULTI
-        |   "/" -> DIVISION
-        |   "%" -> MODULO
+        |   "/" -> DIV
+        |   "%" -> MOD
         |   "&" -> AMBER
         |   "!" -> NOT
         |   "?" -> QUESTION_MARK
