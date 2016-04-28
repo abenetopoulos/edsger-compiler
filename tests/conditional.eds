@@ -15,8 +15,7 @@ void main() {
 
     a = new int;
     *a = 42 % 17;
-    //test = *a ? true : false;
-    intTest = *a ? 3 * 7 : 4 * 9;
+    intTest = *a ? 3 * 7 : 4 * 9 ? true : false;
 
-    writeString("You should not have reached this point\n");
+    a = new int * 5;
 }

@@ -171,7 +171,7 @@ expression:
     | expression; binary_assign; expression                                { None }     %prec ASSIGN_MINUS
     | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { None }     %prec LEFT_PAREN
     | expression; QUESTION_MARK; expression; COLON; expression             { None }     %prec QUEST
-    | NEW; object_type; array_exp?                                         { None }
+    | NEW; object_type; array_exp?; expression?                                        { None }
     | DELETE; expression                                                   { None }
     ;
 
