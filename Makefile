@@ -5,7 +5,7 @@ all:
 	ocamlopt -c parser.ml
 	ocamlopt -c lexer.ml
 	ocamlopt -c main.ml
-	ocamlopt parser.cmx lexer.cmx main.cmx -o main
+	ocamlopt parser.cmx lexer.cmx main.cmx -o edsgerc
 
 lexer.ml: lexer.mll
 	ocamllex $<
@@ -16,23 +16,14 @@ parser.cmi : parser.ml
 parser.ml : parser.mly
 	menhir -v $<
 
-parser_experimental.cmi : parser.ml
-	ocamlopt -c $<
-
-parser_experimental.ml : parser.mly
-	menhir -v $<
-
 %.cmi: %.mli
 	ocamlopt -c $<
 
 %.cmo: %.ml
 	ocamlopt -c $<
 
-#%.cmx: %.ml
-#	$(OCCOPT) $(OCC_FLAGS) $<
-
 clean:
-	rm *.cmi *.mli *.cmx *.automaton *.conflicts *.o parser.ml
+	rm *.cmi *.mli *.cmx *.automaton *.conflicts *.o parser.ml 
 
 distclean: clean
-	rm main lexer lexer.ml
+	rm edsgerc lexer.ml

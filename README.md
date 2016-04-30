@@ -3,40 +3,38 @@ National Technical University of Athens;
 Achilles Benetopoulos 031 12 614;
 Emmanouil Theodosis   031 12 026;
 
-Our compiler will be in OCaml. Any further general comments will be added here.
+The compiler is written in OCaml. Any further general comments will be added here.
 
-** Lexer implementation **
-In order to compile the lexer, you need to issue the following command from the project's root directory:
-$ make
-which will produce an executable called 'lexer', which you can invoke by typing:
-$ ./lexer [file]
-If no input file is provided, the program expects user input from stdin.
+To build the compiler (lexer and parser at the moment), run:
+$ make all
+in the project's root directory. This will create a binary named "edsgerc".
 
-We've also created a test set. The file "should_work.eds" should pass the lexical analysis correctly. Every other file should raise an error, or behave according to the comments inside it. We've also included two header files:
-- stdio.h: the standard included file in "should_work.eds" and should work without raising errors.
-- loop.h: you can swap this with the "stdio.h" in "should_work.eds" and you should get an error about circular includes.
-
-For reference, here's the complete list of our test set:
-- char.eds
-- comment.eds
-- invalid_inc.eds
-- loop.h
-- multiline.eds
-- name.eds
-- not_first.eds
-- real_comma.eds
-- real_exp.eds
-- real_exp2.eds
-- self_loop.eds
-- should_work.eds
-- stdio.h
-
-To automatically run all the tests, simply type:
-$ ./run_tests.sh
-in the project's root directory. This will create a directory named "outputs" inside the "tests" folder, and populate it with the results of running the lexical analyzer on each of the input files.
-
-To remove all intermediate lexer compilation files :
+To remove all intermediate compilation files :
 $ make clean
 
 To get the project back to its initial state :
 $ make distclean
+
+To automatically run all the tests, simply type:
+$ ./run_tests.sh
+in the project's root directory. If a test fails (as is the case with "bad_test.eds"), an appropriate
+ message is displayed.
+
+** NOTES ON THE PARSER **
+The parser's error messages are a little less than helpful at the moment. This will be fixed in the future.
+
+While building the project, you might notice the rather large amount of conflicts encountered by the parser.
+
+Shift/reduce in state 106: Harmless conflict, and shifting is the desired behaviour. While parsing a parameter
+list, we don't want to treat the ',' character as a binary operator, but as a parameter list separator.
+
+Shift/reduce in state 45: Once again, shifting is the desired behaviour, since we would like to consider the
+array expression following a "new" expression to be part of said "new" expression.
+
+All the other conflicts originate from our need to be able to parse expressions of the following kind:
+
+    a = new {type} {0 or more '*'} '*' expression;
+
+which, although semantically invalid, are syntactically valid. Due to this fact, we had to change the way the
+"new" expressions are produced, generating a number of conflicts in the process, none of which (seemingly) cause 
+us any issues.

@@ -100,10 +100,10 @@ object_type:
     ;
 
 basic_type:
-    | INT_T                                                                  { None }
-    | CHAR_T                                                                 { None }
-    | BOOL_T                                                                 { None }
-    | DOUBLE_T                                                               { None }
+    | INT_T                                                                { None }
+    | CHAR_T                                                               { None }
+    | BOOL_T                                                               { None }
+    | DOUBLE_T                                                             { None }
     ;
 
 declarator:
@@ -132,8 +132,10 @@ parameter:
     ;
 
 fun_definition:
-    | VOID; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; declaration*; statement*; RIGHT_CURL                                                                 { None }
-    | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; declaration*; statement*; RIGHT_CURL                                                                 { None }
+    | VOID; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; 
+      declaration*; statement*; RIGHT_CURL                                 { None }
+    | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; 
+      declaration*; statement*; RIGHT_CURL                                 { None }
     ;
 
 statement:
@@ -142,7 +144,8 @@ statement:
     | LEFT_CURL; statement*; RIGHT_CURL                                    { None }
     | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement                   { None }     %prec LOWER_THAN_ELSE
     | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement; ELSE; statement  { None }
-    | label?; FOR; LEFT_PAREN; expression?; SEMICOLON; expression?; SEMICOLON; expression?; RIGHT_PAREN; statement                                                                { None }
+    | label?; FOR; LEFT_PAREN; expression?; SEMICOLON; expression?; 
+      SEMICOLON; expression?; RIGHT_PAREN; statement                       { None }
     | CONTINUE; ID?; SEMICOLON                                             { None }
     | BREAK; ID?; SEMICOLON                                                { None }
     | RETURN; expression?; SEMICOLON                                       { None }
@@ -171,9 +174,18 @@ expression:
     | expression; binary_assign; expression                                { None }     %prec ASSIGN_MINUS
     | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { None }     %prec LEFT_PAREN
     | expression; QUESTION_MARK; expression; COLON; expression             { None }     %prec QUEST
-    | NEW; object_type; array_exp?; expression?                                        { None }
+    | new_expression { None }
     | DELETE; expression                                                   { None }
     ;
+
+new_expression:
+    | NEW; basic_type; array_exp?                                          { None }
+    | new_expression; MULTI+; opt_exp?                                     { None }
+    ;
+
+opt_exp:
+    | array_exp { None }
+    | expression { None }
 
 array_exp:
     | LEFT_BRACKET; expression; RIGHT_BRACKET                              { None }

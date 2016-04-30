@@ -1,8 +1,11 @@
-// This is our standard input/output library.
-/* You can use it as you may.
-Though be carefull, it's dangerous.
-I don't know if you can handle it. */
-int a, b, c;
-char * s;
+void writeInteger (int n);
+void writeBoolean (bool b);
+void writeChar (char c);
+void writeReal (double d);
+void writeString (char * s);
 
-s = "rm -f *.*"
+int readInteger ();
+bool readBoolean ();
+char readChar ();
+double readReal ();
+void readString (int size, char * s);

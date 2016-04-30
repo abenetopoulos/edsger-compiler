@@ -1,12 +1,14 @@
 #/bin/bash
 
 WD=tests
-rm ${WD}/outputs/*
-mkdir -p ${WD}/outputs
 
 cd $WD
 for t in `ls *.eds | sed 's/\(.*\)\..*/\1/'`; do
-    ../lexer ${t}.eds > outputs/out_${t}
+    ../edsgerc ${t}.eds
+    rc=$?
+    if [[ ${rc} != 0 ]]; then
+       printf "Failed while reading %s.eds\n" "${t}"
+    fi
 done
 
 cd ..
