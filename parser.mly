@@ -1,3 +1,7 @@
+%{
+    open Ast
+%}
+
 %token <int> INT
 %token <float> DOUBLE
 %token <string> ID
@@ -55,7 +59,7 @@
 %token ASSIGN_MINUS
 %token EOF
 
-%start <'a option> prog
+%start <unit> prog
 
 %left COMMA
 %right ASSIGN ASSIGN_MULTI ASSIGN_DIV ASSIGN_MOD ASSIGN_PLUS ASSIGN_MINUS
@@ -79,165 +83,174 @@
 %%
 
 prog:
-    | declaration; declaration*; EOF                                       { None }
+    | declaration; declaration*; EOF                                       { astTree := !astTree @ ($1 :: $2) }
     ;
 
 declaration:
-    | var_declaration                                                      { None }
-    | fun_declaration                                                      { None }
-    | fun_definition                                                       { None }
+    | var_declaration                                                      { $1 }
+    | fun_declaration                                                      { $1 }
+    | fun_definition                                                       { $1 }
     ;
 
 var_declaration:
-    | object_type; declarator; other_decs*; SEMICOLON                      { None }
+    | object_type; declarator; other_decs*; SEMICOLON                      { VarDecl ($1, $2 :: $3) }
     ;
 
 other_decs:
-    | COMMA; declarator;                                                   { None }
+    | COMMA; declarator;                                                   { $2 }
 
 object_type:
-    | basic_type; MULTI*                                                   { None }
+    | basic_type; MULTI*                                                   { OType ($1, List.length $2) }
     ;
 
 basic_type:
-    | INT_T                                                                { None }
-    | CHAR_T                                                               { None }
-    | BOOL_T                                                               { None }
-    | DOUBLE_T                                                             { None }
+    | INT_T                                                                { TInt }
+    | CHAR_T                                                               { TChar }
+    | BOOL_T                                                               { TBool }
+    | DOUBLE_T                                                             { TDouble }
     ;
 
 declarator:
-    | ID; array_def?                                                       { None }
+    | ID; array_def?                                                       { ADeclarator ($1, $2) }
     ;
 
 array_def:
-    | LEFT_BRACKET; const_expr; RIGHT_BRACKET                              { None }
+    | LEFT_BRACKET; const_expr; RIGHT_BRACKET                              { $2 }
     ;
 
 fun_declaration:
-    | VOID ; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON       { None }
-    | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON { None }
+    | VOID ; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON       {  let oType = OType(TVoid, 0) in 
+                                                                             FunDecl (oType, $2, $4)  }
+    | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; SEMICOLON { let oType = $1 in
+                                                                             FunDecl (oType, $2, $4)}
     ;
 
 parameter_list:
-    | parameter; other_params*                                             { None }
+    | parameter; other_params*                                             { $1 :: $2 }
     ;
 
 other_params:
-    | COMMA; parameter                                                     { None }
+    | COMMA; parameter                                                     { $2 }
     ;
 
 parameter:
-    | BYREF?; object_type; ID                                              { None }
+    | BYREF?; object_type; ID                                              { let v = 
+                                                                                match $1 with
+                                                                                | None -> Param ($2, $3)
+                                                                                | _ -> ParamByRef ($2, $3)
+                                                                             in v 
+                                                                           }
     ;
 
 fun_definition:
     | VOID; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; 
-      declaration*; statement*; RIGHT_CURL                                 { None }
+      declaration*; statement*; RIGHT_CURL                                 { let oType = OType(TVoid, 0) in 
+                                                                             FunDef (oType, $2, $4, $7, $8) }
     | object_type; ID; LEFT_PAREN; parameter_list?; RIGHT_PAREN; LEFT_CURL; 
-      declaration*; statement*; RIGHT_CURL                                 { None }
+      declaration*; statement*; RIGHT_CURL                                 { let oType = $1 in
+                                                                             FunDef (oType, $2, $4, $7, $8)}
     ;
 
 statement:
-    | SEMICOLON                                                            { None }
-    | expression; SEMICOLON                                                { None }
-    | LEFT_CURL; statement*; RIGHT_CURL                                    { None }
-    | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement                   { None }     %prec LOWER_THAN_ELSE
-    | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement; ELSE; statement  { None }
+    | SEMICOLON                                                            { SSemicolon }
+    | expression; SEMICOLON                                                { SExpr $1 }
+    | LEFT_CURL; statement*; RIGHT_CURL                                    { SBlock $2 } (*NOTE: should we use fold here?*)
+    | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement                   { SIf ($3, $5) }     %prec LOWER_THAN_ELSE
+    | IF; LEFT_PAREN; expression; RIGHT_PAREN; statement; ELSE; statement  { SIfElse ($3, $5, $7) }
     | label?; FOR; LEFT_PAREN; expression?; SEMICOLON; expression?; 
-      SEMICOLON; expression?; RIGHT_PAREN; statement                       { None }
-    | CONTINUE; ID?; SEMICOLON                                             { None }
-    | BREAK; ID?; SEMICOLON                                                { None }
-    | RETURN; expression?; SEMICOLON                                       { None }
+      SEMICOLON; expression?; RIGHT_PAREN; statement                       { SFor ($1, $4, $6, $8, $10) }
+    | CONTINUE; ID?; SEMICOLON                                             { SContinue $2 }
+    | BREAK; ID?; SEMICOLON                                                { SBreak $2 }
+    | RETURN; expression?; SEMICOLON                                       { SReturn $2 }
     ;
 
 label:
-    | ID; COLON                                                            { None }
+    | ID; COLON                                                            { $1 }
     ;
 
 expression:
-    | ID                                                                   { None }
-    | LEFT_PAREN; expression; RIGHT_PAREN                                  { None }
-    | TRUE                                                                 { None }
-    | FALSE                                                                { None }
-    | NULL                                                                 { None }
-    | INT                                                                  { None }
-    | CHAR                                                                 { None }
-    | DOUBLE                                                               { None }
-    | STRING                                                               { None }
-    | ID; LEFT_PAREN; expression_list?; RIGHT_PAREN                        { None }
-    | expression; array_exp                                                { None } 
-    | unary_op; expression                                                 { None }     %prec AMBER
-    | expression; binary_op; expression                                    { None }     %prec BINARY
-    | unary_assign; expression                                             { None }     %prec PLUSPLUS_PRE
-    | expression; unary_assign                                             { None }
-    | expression; binary_assign; expression                                { None }     %prec ASSIGN_MINUS
-    | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { None }     %prec LEFT_PAREN
-    | expression; QUESTION_MARK; expression; COLON; expression             { None }     %prec QUEST
-    | new_expression { None }
-    | DELETE; expression                                                   { None }
+    | ID                                                                   { EId $1 }
+    | LEFT_PAREN; expression; RIGHT_PAREN                                  { $2 }
+    | TRUE                                                                 { EBool true }
+    | FALSE                                                                { EBool false }
+    | NULL                                                                 { ENull }
+    | INT                                                                  { EInt $1 }
+    | CHAR                                                                 { EChar $1 }
+    | DOUBLE                                                               { EDouble $1 }
+    | STRING                                                               { EString $1 }
+    | ID; LEFT_PAREN; expression_list?; RIGHT_PAREN                        { EFCall ($1, $3) }
+    | expression; array_exp                                                { EArray ($1, $2) } 
+    | unary_op; expression                                                 { EUnary ($1, $2) }     %prec AMBER
+    | expression; binary_op; expression                                    { EBinOp ($2, $1, $3) }     %prec BINARY
+    | unary_assign; expression                                             { EUnAssign ($1, LocLeft, $2) }     %prec PLUSPLUS_PRE
+    | expression; unary_assign                                             { EUnAssign ($2, LocRight, $1) }
+    | expression; binary_assign; expression                                { EBinAssign ($2, $1, $3) }     %prec ASSIGN_MINUS
+    | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { ECast ($2, $4) }     %prec LEFT_PAREN
+    | expression; QUESTION_MARK; expression; COLON; expression             { EConditional ($1, $3, $5) }     %prec QUEST
+    | new_expression                                                       { $1 }
+    | DELETE; expression                                                   { EDelete $2 }
     ;
 
 new_expression:
-    | NEW; basic_type; array_exp?                                          { None }
-    | new_expression; MULTI+; opt_exp?                                     { None }
+    | NEW; basic_type; array_exp?                                          { ENew (OType($2, 0), $3) }
+    | new_expression; MULTI+; opt_exp?                                     { ENewP ($1, List.length $2, $3) }
     ;
 
 opt_exp:
-    | array_exp { None }
-    | expression { None }
+    | array_exp                                                            { (Some $1, None) }
+    | expression                                                           { (None, Some $1) }
 
 array_exp:
-    | LEFT_BRACKET; expression; RIGHT_BRACKET                              { None }
+    | LEFT_BRACKET; expression; RIGHT_BRACKET                              { ArrExp $2 }
     ;
 
 expression_list:
-    | expression; other_expr*                                              { None }
+    | expression; other_expr*                                              { $1 :: $2 }
     ;
 
 other_expr:
-    | COMMA; expression                                                    { None }
+    | COMMA; expression                                                    { $2 }
     ;
 
 const_expr:
-    | expression                                                           { None }
+    | expression                                                           { $1 }
     ;
 
 unary_op:
-    | AMBER                                                                { None }
-    | MULTI                                                                { None }
-    | PLUS                                                                 { None }
-    | MINUS                                                                { None }
-    | NOT                                                                  { None }
+    | AMBER                                                                { UnaryRef }
+    | MULTI                                                                { UnaryDeref }
+    | PLUS                                                                 { UnaryPlus }
+    | MINUS                                                                { UnaryMinus }
+    | NOT                                                                  { UnaryNot }
     ;
 
 binary_op:
-    | DIV                                                                  { None }
-    | MULTI                                                                { None }
-    | MOD                                                                  { None }
-    | PLUS                                                                 { None }
-    | MINUS                                                                { None }
-    | LESS                                                                 { None }
-    | GREATER                                                              { None }
-    | LESSEQ                                                               { None }
-    | GREATEREQ                                                            { None }
-    | EQ                                                                   { None }
-    | NOTEQ                                                                { None }
-    | AND                                                                  { None }
-    | OR                                                                   { None }
-    | COMMA                                                                { None }
+    | DIV                                                                  { BinDiv }
+    | MULTI                                                                { BinMulti }
+    | MOD                                                                  { BinMod }
+    | PLUS                                                                 { BinPlus }
+    | MINUS                                                                { BinMinus }
+    | LESS                                                                 { BinLess }
+    | GREATER                                                              { BinGreater }
+    | LESSEQ                                                               { BinLessEq }
+    | GREATEREQ                                                            { BinGreaterEq }
+    | EQ                                                                   { BinEq }
+    | NOTEQ                                                                { BinNotEq }
+    | AND                                                                  { BinAnd }
+    | OR                                                                   { BinOr }
+    | COMMA                                                                { BinComma }
     ;
 
 unary_assign:
-    | PLUSPLUS                                                             { None }
-    | MINUSMINUS                                                           { None }
+    | PLUSPLUS                                                             { UnaryPlusPlus }
+    | MINUSMINUS                                                           { UnaryMinusMinus }
     ;
 
 binary_assign:
-    | ASSIGN                                                               { None }
-    | ASSIGN_MULTI                                                         { None }
-    | ASSIGN_DIV                                                           { None }
-    | ASSIGN_MOD                                                           { None }
-    | ASSIGN_PLUS                                                          { None }
-    | ASSIGN_MINUS                                                         { None }
+    | ASSIGN                                                               { BinAssign }
+    | ASSIGN_MULTI                                                         { BinAssignMulti }
+    | ASSIGN_DIV                                                           { BinAssignDiv }
+    | ASSIGN_MOD                                                           { BinAssignMod }
+    | ASSIGN_PLUS                                                          { BinAssignPlus }
+    | ASSIGN_MINUS                                                         { BinAssignMinus }
     ;

@@ -1,11 +1,12 @@
 all:
+	ocamlopt -c ast.ml
 	menhir -v parser.mly
 	ocamllex lexer.mll
 	ocamlopt -c parser.mli
 	ocamlopt -c parser.ml
 	ocamlopt -c lexer.ml
 	ocamlopt -c main.ml
-	ocamlopt parser.cmx lexer.cmx main.cmx -o edsgerc
+	ocamlopt ast.cmx parser.cmx lexer.cmx main.cmx -o edsgerc
 
 lexer.ml: lexer.mll
 	ocamllex $<

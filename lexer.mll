@@ -2,6 +2,7 @@
     open Lexing
     open Printf    
     open Parser
+    open Ast
 
     exception SyntaxError of string
 
@@ -110,6 +111,7 @@ rule read incFiles=
         |   "-=" -> ASSIGN_MINUS
         |   "*=" -> ASSIGN_MULTI
         |   "/=" -> ASSIGN_DIV
+        |   "%=" -> ASSIGN_MOD
         |   _ -> ASSIGN_DIV
     }
     | separator { 
@@ -130,7 +132,7 @@ and start_include incFiles=
            if (not (List.exists (fun x -> x = fileName) incFiles)) then
                 let inF = open_in fileName in
                 let lbuf = Lexing.from_channel inF in
-                read (fileName :: incFiles) lbuf
+                Parser.prog (read (fileName :: incFiles)) lbuf
            else
                let currentFileName = List.hd incFiles in 
                begin
