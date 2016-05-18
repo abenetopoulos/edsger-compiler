@@ -20,7 +20,7 @@ void main () {
                 return false;
         return true;
     }
-
+    
     writeString("Please, give the upper limit: ");
     limit = readInteger();
     writeString("Prime numbers between 0 and ");

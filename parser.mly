@@ -65,10 +65,12 @@
 %right ASSIGN ASSIGN_MULTI ASSIGN_DIV ASSIGN_MOD ASSIGN_PLUS ASSIGN_MINUS
 %right QUEST
 %nonassoc QUESTION_MARK
-%left BINARY
+(*%nonassoc BINARY*)
 %left OR
 %left AND
+%nonassoc EQUALITIES
 %nonassoc EQ NOTEQ GREATEREQ GREATER LESSEQ LESS
+%left OTHER_BINS
 %left PLUS MINUS
 %left MULTI DIV MOD
 %nonassoc LEFT_PAREN
@@ -170,7 +172,7 @@ label:
 
 expression:
     | ID                                                                   { EId $1 }
-    | LEFT_PAREN; expression; RIGHT_PAREN                                  { $2 }
+    | LEFT_PAREN; expression; RIGHT_PAREN                                  { EExpr $2 }
     | TRUE                                                                 { EBool true }
     | FALSE                                                                { EBool false }
     | NULL                                                                 { ENull }
@@ -181,7 +183,8 @@ expression:
     | ID; LEFT_PAREN; expression_list?; RIGHT_PAREN                        { EFCall ($1, $3) }
     | expression; array_exp                                                { EArray ($1, $2) } 
     | unary_op; expression                                                 { EUnary ($1, $2) }     %prec AMBER
-    | expression; binary_op; expression                                    { EBinOp ($2, $1, $3) }     %prec BINARY
+    | expression; lower_binary_op; expression                                 { EBinOp ($2, $1, $3) }     %prec EQUALITIES
+    | expression; other_binary_op; expression                                    { EBinOp ($2, $1, $3) }     %prec OTHER_BINS
     | unary_assign; expression                                             { EUnAssign ($1, LocLeft, $2) }     %prec PLUSPLUS_PRE
     | expression; unary_assign                                             { EUnAssign ($2, LocRight, $1) }
     | expression; binary_assign; expression                                { EBinAssign ($2, $1, $3) }     %prec ASSIGN_MINUS
@@ -191,9 +194,13 @@ expression:
     | DELETE; expression                                                   { EDelete $2 }
     ;
 
+new_expression_basic:
+    | NEW; basic_type                                                      { $2 }
+
 new_expression:
-    | NEW; basic_type; array_exp?                                          { ENew (OType($2, 0), $3) }
-    | new_expression; MULTI+; opt_exp?                                     { ENewP ($1, List.length $2, $3) }
+    | new_expression_basic                                                 { ENew (OType($1, 1), None ) }
+    | new_expression_basic; array_exp                                      { ENew (OType($1, 1), Some $2) }
+    | new_expression_basic; MULTI+; opt_exp?                               { ENewP (OType($1, 1 + List.length $2), $3) }
     ;
 
 opt_exp:
@@ -224,12 +231,14 @@ unary_op:
     | NOT                                                                  { UnaryNot }
     ;
 
-binary_op:
+other_binary_op:
     | DIV                                                                  { BinDiv }
     | MULTI                                                                { BinMulti }
     | MOD                                                                  { BinMod }
     | PLUS                                                                 { BinPlus }
     | MINUS                                                                { BinMinus }
+
+lower_binary_op:    
     | LESS                                                                 { BinLess }
     | GREATER                                                              { BinGreater }
     | LESSEQ                                                               { BinLessEq }

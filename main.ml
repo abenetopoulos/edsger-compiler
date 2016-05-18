@@ -1,5 +1,6 @@
 open Lexer
 open Format
+open Semantic
 open Ast
 
 let () =
@@ -11,8 +12,8 @@ let () =
     let lexbuf = Lexing.from_channel cin in
     (try
         Parser.prog (Lexer.read (fname :: [])) lexbuf;
-        print_ast !astTree;
-        (*check_ast !astTree; *)
+        (*print_ast !astTree;*) (*NOTE: enable this at your own risk!(see comment in ast.ml)*)
+        check_ast !astTree;
         exit 0
      with
         | Failure msg         -> print_endline ("Failure --- " ^ msg); exit 1

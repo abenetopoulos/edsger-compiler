@@ -56,8 +56,9 @@ and ast_expr = EId of string
              | ECast of obj_type * ast_expr
              | EConditional of ast_expr * ast_expr * ast_expr
              | ENew of obj_type * (ast_array_exp option)
-             | ENewP of ast_expr * int * ((ast_array_exp option * ast_expr option) option)
+             | ENewP of obj_type * ((ast_array_exp option * ast_expr option) option)
              | EDelete of ast_expr
+
 and ast_array_exp = ArrExp of ast_expr
 
 and ast_un = UnaryRef | UnaryDeref | UnaryPlus | UnaryMinus | UnaryNot
@@ -386,8 +387,9 @@ and print_ast_expr ppf ast =
      | None -> ()
      | Some x -> print_ast_arr_expr ppf x
     )
-  | ENewP (enew, pointerCnt, exprOption) ->
-    print_ast_expr ppf enew;
+  | ENewP (OType(bType, pointerCnt), exprOption) ->
+    (*print_ast_expr ppf enew;*)
+    fprintf ppf "new %s" (ast_type_string bType);
     ast_print_pointers ppf pointerCnt;
     (
         match exprOption with

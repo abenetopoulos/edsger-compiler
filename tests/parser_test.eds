@@ -1,6 +1,4 @@
-int a;
 #include "stdio.h"
-
 
 int OutsideMainFun(int foo, char* bar) {
     int res;
@@ -12,7 +10,6 @@ int OutsideMainFun(int foo, char* bar) {
     return res;    
 }
 
-#include "math.h"
 void main() {
 
     bool InMainFun() {
@@ -26,29 +23,25 @@ void main() {
 
     boolTest = 3 > 5 ? true : 10 > 5 ? true : false;
 
+    
     if (boolTest) 
-        if (42)
+        if (42 != 0)
             writeString("correct\n");
         else
             writeString("balls\n");
     else
         writeString("incorrect\n");
 
-
     a = new int;
     *a = 42 % 17;
-    a %= 10;
-    intTest = *a ? 3 * 7 : 4 * 9 ? true : false;
+    //a %= 10;
 
     //this shouldn't pass the semantic analysis phase
-    a = new int * 5;
+    //a = new int * 5;
     
-    if (a)
-        writeString("a\n");
-    else
-        writeString("not a\n");
-
     test = "outside main\n";
 
-    a = OutsideMainFun(0.042E100, test);
+    boolTest = InMainFun();
+    intTest = OutsideMainFun(0, test);
+    //a = OutsideMainFun(42, test);
 }
