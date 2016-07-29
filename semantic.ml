@@ -393,7 +393,7 @@ and check_expr expr =
             (
             match unOp with
             | UnaryRef -> (*if type of expr is pointer, increase cnt by one, else make pointer*)
-                    (
+                    ( (*FIX (achilles) : if expr is a constant, signify error*)
                     match exprType with
                     | TYPE_pointer (basicType, pointerCnt) -> (TYPE_pointer (basicType, pointerCnt + 1), Some RVal)
                     | _ as basicType -> (TYPE_pointer (basicType, 1), Some RVal)

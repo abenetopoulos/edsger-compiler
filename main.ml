@@ -14,6 +14,7 @@ let () =
         Parser.prog (Lexer.read (fname :: [])) lexbuf;
         (*print_ast !astTree;*) (*NOTE: enable this at your own risk!(see comment in ast.ml)*)
         check_ast !astTree;
+        codegen !astTree;
         exit 0
      with
         | Failure msg         -> print_endline ("Failure --- " ^ msg); exit 1
