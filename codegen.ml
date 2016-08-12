@@ -144,28 +144,29 @@ and codegen_expr expr env bldr =
             if (llValType = int_type) then build_srem, "tmp_mod" 
             else build_frem, "tmp_mod" 
         | BinPlus ->
-            if (llValType = int_type) then build_add, "tmp_add"
+            (*NOTE: this check is bogus*)
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_add, "tmp_add" 
             else build_fadd, "tmp_add" 
         | BinMinus ->
-            if (llValType = int_type) then build_sub, "tmp_sub"
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_sub, "tmp_sub"
             else build_fsub, "tmp_sub"
         | BinLess ->
-            if (llValType = int_type) then build_icmp Slt, "tmp_less"
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Slt, "tmp_less"
             else build_fcmp Slt, "tmp_less"
         | BinGreater ->
-            if (llValType = int_type) then build_icmp Sgt, "tmp_greater"
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sgt, "tmp_greater"
             else build_fcmp Sgt, "tmp_greater"
         | BinLessEq ->
-            if (llValType = int_type) then build_icmp Sle, "tmp_lesseq"
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sle, "tmp_lesseq"
             else build_fcmp Sle, "tmp_lesseq"
         | BinGreaterEq ->
-            if (llValType = int_type) then build_icmp Sge, "tmp_greatereq"
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sge, "tmp_greatereq"
             else build_fcmp Sge, "tmp_greatereq"
         | BinEq ->
-            if (llValType = int_type) then build_icmp Eq, "tmp_eq"
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Eq, "tmp_eq"
             else build_fcmp Eq, "tmp_eq"
         | BinNotEq -> 
-            if (llValType = int_type) then build_icmp Ne, "tmp_noteq"
+            if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Ne, "tmp_noteq"
             else build_fcmp Ne, "tmp_noteq"
         | BinAnd ->
             build_and, "tmp_and"
@@ -177,8 +178,33 @@ and codegen_expr expr env bldr =
         in
         if strng <> "" then build_fun llVal1 llVal2 strng bldr
         else llVal2
-    | EUnAssign (unAssOp, opLocation, expr) -> ()
-    | EBinAssign (binAssOp, expr1, expr2) -> ()
+    | EUnAssign (unAssOp, opLocation, expr) -> 
+        let llValExpr = codegen_expr env expr bldr in
+        let oneConst = int_type 1 in
+        let modifiedLLValExpr = 
+        (match unAssOp with
+            | UnaryPlusPlus -> build_add llValExpr oneConst "tmp_inc" bldr
+            | UnaryMinusMinus -> build_sub llValExpr oneConst "tmp_inc" bldr
+        ) in
+        let res = build_store llValExpr modifiedLLValExpr bldr in
+        (match opLocation with
+         | LocRight -> llValExpr 
+         | LocLeft -> res
+        ) (*NOTE: most likely wrong. will crash and burn. avoid at all costs*)
+    | EBinAssign (binAssOp, expr1, expr2) -> 
+        let llVal1 = codegen_expr env expr1 bldr in
+        let llVal2 = codegen_expr env expr2 bldr in
+        let rightHandLLVal = 
+            (match binAssOp with
+            | BinAssign -> llVal2
+            | BinAssignMulti -> codegen_expr env (EBinOp (BinMulti, expr1, expr2)) bldr
+            | BinAssignDiv -> codegen_expr env (EBinOp (BinDiv, expr1, expr2)) bldr
+            | BinAssignMod -> codegen_expr env (EBinOp (BinMod, expr1, expr2)) bldr
+            | BinAssignPlus -> codegen_expr env (EBinOp (BinPlus, expr1, expr2)) bldr
+            | BinAssignMinus -> codegen_expr env (EBinOp (BinMinus, expr1, expr2)) bldr
+            ) 
+        in
+        build_store llVal1 rightHandLLVal bldr
     | ECast (OType (bType, pointerCnt) as objType, expr) -> ()
     | EConditional (exprCondition, exprTrue, exprFalse) -> ()
     | ENew (OType(basicType, pointerCnt), arrayOption) -> ()
