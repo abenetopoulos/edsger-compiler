@@ -381,7 +381,7 @@ and check_expr expr =
                 )
             in
             (hashType, Some RVal)
-    | EDelete expr ->
+    | EDelete expr -> (*TODO(achilles): check that memory pointed to by expr was allocated via new*)
             let (exprType, _) = check_expr expr in
             (
             match exprType with
