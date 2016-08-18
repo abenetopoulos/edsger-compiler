@@ -1,16 +1,4 @@
-(*NOTE: according to the spec:
- * Οι τελεστές <, >, <= και >= υλοποιούν τις σχέσεις ανισότητας μεταξύ αριθμών ή δεικτών.[...]
- * αν είναι δείκτες, η σύγκριση έχει νόημα μόνο όταν τα τελούμενα περιέχουν διευθύνσεις αντικείμενων 
- * που βρίσκονται στον ίδιο μονοδιάστατο πίνακα και γίνεται βάσει της σχετικής θέσης αυτών των 
- * αντικειμένων μέσα στον πίνακα
- * We don't do this...
- * The c standard just says that comparing pointers not pointing to the same object is undefined
- * And also, we know that memory of an array in virtual memory will be contiguous.
- * So maybe a simple comparison of the address of the two pointers will give us the result we want
- * for arrays...
-*)
-
-
+(*TODO: check that labels in SBreak/SReturn/SContinue exist. Do stuff with labels in SFor*)
 
 open Ast
 open Types

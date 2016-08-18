@@ -3,7 +3,6 @@
 *)
 
 (*TODO:
-  - add code for the remaining statement types
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
 
@@ -117,12 +116,12 @@ and codegen_stmt stmt env bldr =
         let startBB = insertion_block bldr in
         let parent_func = block_parent start_bb in
         let thenBB = append_block llctx "then" parent_func in
-        position_at_end then_bb bldr;
+        position_at_end thenBB bldr;
 
         generate_code stmt1 SInternal bldr;
         let newThenBB = insertion_block bldr in
         let elseBB = append_block llctx "else" parent_func in
-        position_at_end else_bb bldr;
+        position_at_end elseBB bldr;
 
         generate_code stmt2 SInternal bldr;
         let newElseBB = insertion_block bldr in
@@ -137,9 +136,62 @@ and codegen_stmt stmt env bldr =
 
         position_at_end mergeBB bldr
 
-    | SFor (labelOption, initialization, condition, afterthought, stmt) -> ()
-    | SContinue labelOption -> ()
-    | SBreak labelOption -> ()
+    | SFor (labelOption, initialization, condition, afterthought, stmt) ->
+        let initializationLLVal = codegen_expr initialization env bldr in
+        let preheaderBB = insertion_block bldr in
+        let parentFunction = block_parent preheaderBB in
+        let loopBB = append_block llctx "tmp_loopkys" parentFunction in
+        ignore (build_br loopBB bldr);
+
+        position_at_end loopBB bldr;
+        let conditionLLVal = codegen_expr condition env bldr in
+        let conditionLLVal =
+        (match condExpr with
+         | EId _ -> build_load conditionLLVal "tmp_load" bldr
+         | _ -> conditionLLVal
+        ) in
+        let bodyBB = insertion_block bldr in
+        let thenBB = append_block llctx "body" parentFunction in
+        position_at_end thenBB bldr;
+
+        generate_code stmt SInternal bldr;
+
+        let afterthoughtBB = append_block llctx "tmp_afterthought" parentFunction in
+        position_at_end afterthoughtBB bldr;
+        ignore (codegen_expr afterthought env bldr);
+        ignore (build_br loopBB bldr);
+
+        let mergeBB = append_block llctx "merge" parentFunction in
+        position_at_end mergeBB bldr;
+
+        (match labelOption with
+         | None -> ()
+         | Some labelStrn ->
+            let continueStrn = labelStrn ^ "Cont" in
+            let breakStrn = labelStrn ^ "Break" in
+            begin
+                Hashtbl.add env continueStrn afterthoughtBB;
+                Hashtbl.add env breakStrn mergeBB
+            end
+        )
+    | SContinue labelOption ->
+        (match labelOption with
+         | Some labelStrn ->
+            let targetLLVal = Hashtbl.find env (labelStrn ^ "Cont") in
+            ignore (build_br targetLLVal bldr)
+         | None ->
+            let currentBB = insertion_block bldr in 
+            ignore (build_br (block_pred currentBB) bldr)
+         )
+    | SBreak labelOption ->
+        (match labelOption with
+         | Some labelStrn ->
+            let targetLLVal = Hashtbl.find env (labelStrn ^ "Break") in
+            ignore (build_br targetLLVal bldr)
+         | None ->
+            let currentBB = insertion_block bldr in 
+            ignore (build_br (block_succ currentBB) bldr)
+         )
     | SReturn exprOption ->
         (match exprOption with
          | None -> build_ret_void bldr
