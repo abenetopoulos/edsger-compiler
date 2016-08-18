@@ -3,13 +3,9 @@
 *)
 
 (*TODO:
-  - add casts for pointer types
   - add code for the remaining statement types
-  - fix condition in binary operations for pointer types 
-  - other TODOs inside this module
-  - change all string arguments to use a counter (to get output like clang's)
+  - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
-
 
 let llctx = global_context ()
 
@@ -87,22 +83,76 @@ let rec generate_code node scope envOpt bldr =
         
 and codegen_stmt stmt env bldr = 
     match stmt with
-    | SExpr expr -> ()
+    | SExpr expr -> codegen_expr expr env bldr
     | SBlock stmts -> List.iter (fun d -> codegen_stmt d env bldr) stmts
     | SIf (condExpr, stmt) ->
-            let predicate, lhs, rhs = eval_bool_expr condExpr in
-            let cmprson = build_icmp predicate lhs rhs "tmp" in (*FIXME: this is definitely wrong*)
-            let start_bb = insertion_block bldr in
-            let parent_func = block_parent start_bb in
-            let then_bb = append_block llctx "then" parent_func in
-            let _ = position_at_end then_bb bldr in
-            let _ = generate_code stmt SInternal bldr in
-            ()
-    | SIfElse (expr, stmt1, stmt2) -> ()
+        let conditionLLVal = codegen_expr condExpr env bldr in
+        let conditionLLVal =
+        (match condExpr with
+         | EId _ -> build_load conditionLLVal "tmp_load" bldr
+         | _ -> conditionLLVal
+        ) in
+        let startBB = insertion_block bldr in
+        let parent_func = block_parent start_bb in
+        let thenBB = append_block llctx "then" parent_func in
+        position_at_end then_bb bldr;
+
+        generate_code stmt SInternal bldr;
+        let newThenBB = insertion_block bldr in
+        let mergeBB = append_block llctx "if_cont" parent_func in
+        position_at_end startBB bldr;
+
+        ignore (build_cond_br conditionLLVal thenBB mergeBB bldr);
+        position_at_end newThenBB bldr;
+        ignore (build_br mergeBB bldr);
+
+        position_at_end mergeBB bldr
+    | SIfElse (expr, stmt1, stmt2) -> 
+        let conditionLLVal = codegen_expr condExpr env bldr in
+        let conditionLLVal =
+        (match condExpr with
+         | EId _ -> build_load conditionLLVal "tmp_load" bldr
+         | _ -> conditionLLVal
+        ) in
+        let startBB = insertion_block bldr in
+        let parent_func = block_parent start_bb in
+        let thenBB = append_block llctx "then" parent_func in
+        position_at_end then_bb bldr;
+
+        generate_code stmt1 SInternal bldr;
+        let newThenBB = insertion_block bldr in
+        let elseBB = append_block llctx "else" parent_func in
+        position_at_end else_bb bldr;
+
+        generate_code stmt2 SInternal bldr;
+        let newElseBB = insertion_block bldr in
+        let mergeBB = append_block llctx "if_cont" parent_func in
+        position_at_end startBB bldr;
+
+        ignore (build_cond_br conditionLLVal thenBB elseBB bldr);
+        position_at_end newThenBB bldr;
+        ignore (build_br mergeBB bldr);
+        position_at_end newElseBB bldr;
+        ignore (build_br mergeBB bldr);
+
+        position_at_end mergeBB bldr
+
     | SFor (labelOption, initialization, condition, afterthought, stmt) -> ()
     | SContinue labelOption -> ()
     | SBreak labelOption -> ()
-    | SReturn exprOption -> ()
+    | SReturn exprOption ->
+        (match exprOption with
+         | None -> build_ret_void bldr
+         | Some expr ->
+            let llValExpr = codegen_expr expr env bldr in
+            (match expr with
+             | EId _ 
+             | EArray _ -> 
+                let llValRet = build_load llValExpr "tmp_load" bldr in
+                build_ret llValRet bldr
+             | _ -> build_ret llValExpr bldr
+            )
+        )
 
 and codegen_expr expr env bldr =  
     match expr with
@@ -127,7 +177,6 @@ and codegen_expr expr env bldr =
         let offset = codegen_expr idxExpr bldr in
         let gepExpr = build_gep baseVal [|offset|] "tmp_access" bldr in
         gepExpr
-        (*build_load gepExpr "tmp_load" bldr*)
     | EUnary (unaryOp, uExpr) ->
         let exprLLVal = codegen_expr uExpr env bldr in
         let exprValType = type_of exprLLVal in
@@ -136,69 +185,85 @@ and codegen_expr expr env bldr =
          | UnaryDeref ->
              let ptrLLVal = build_gep exprLLVal [|int_type 0; int_type 0|] "tmp_ref" bldr in
              build_load ptrLLVal "tmp_load" bldr
-         (*TODO: the following should be doing a load before anything else if the expression is an identifier/array access*)
          | UnaryPlus -> exprLLVal
-         | UnaryMinus -> build_neg exprLLVal "tmp_neg" bldr
-         | UnaryNot -> build_not exprLLVal "tmp_not" bldr
+         | UnaryMinus -> 
+            (match uExpr with
+             | EId _
+             | EArray _ ->
+                let loadedVal = build_load exprLLVal "tmp_load" bldr in
+                build_neg loadedVal "tmp_neg" bldr
+             | _ -> build_neg exprLLVal "tmp_neg" bldr
+            )
+         | UnaryNot -> 
+            (match uExpr with
+             | EId _
+             | EArray _ ->
+                let loadedVal = build_load exprLLVal "tmp_load" bldr in
+                build_not loadedVal "tmp_not" bldr
+             | _ -> build_not exprLLVal "tmp_not" bldr
+            )
         )
     | EBinOp (binOp, opand1, opand2) ->
         let llVal1 = codegen_expr env opand1 bldr in
         let llValType = type_of llVal1 in
         let llVal2 = codegen_expr env opand2 bldr in
-        let build_fun, strng = 
+        let build_fun, llVal2, strng =
         (match binOp with
          | BinDiv -> 
-             if (llValType = int_type) then build_sdiv, "tmp_div"
-             else build_fdiv, "tmp_div"
+             if (llValType = int_type) then build_sdiv, llVal2, "tmp_div"
+             else build_fdiv, llVal2, "tmp_div"
          | BinMulti -> 
-             if (llValType = int_type) then build_mul, "tmp_mul"
-             else build_fmul, "tmp_mul" 
+             if (llValType = int_type) then build_mul, llVal2, "tmp_mul"
+             else build_fmul, llVal2, "tmp_mul" 
          | BinMod ->
-             if (llValType = int_type) then build_srem, "tmp_mod" 
-             else build_frem, "tmp_mod" 
+             if (llValType = int_type) then build_srem, llVal2, "tmp_mod" 
+             else build_frem, llVal2, "tmp_mod" 
          | BinPlus ->
-             (*NOTE: this check is just... no*)
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_add, "tmp_add" 
-             else build_fadd, "tmp_add" 
+             if (llValType = int_type) then build_add, llVal2, "tmp_add" 
+             else if (llValType = pointer_type) then build_gep, [|llVal2|], "tmp_ptradd"
+             else build_fadd, llVal2, "tmp_add" 
          | BinMinus ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_sub, "tmp_sub"
-             else build_fsub, "tmp_sub"
+             if (llValType = int_type) then build_sub, llVal2, "tmp_sub"
+             else if (llValType = pointer_type) then
+                 let negllVal2 = build_neg llVal2 "tmp_neg" bldr in
+                 build_gep, [|negllVal2|], "tmp_ptrsub"
+             else build_fsub, llVal2, "tmp_sub"
          | BinLess ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Slt, "tmp_less"
-             else build_fcmp Slt, "tmp_less"
+             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Slt, llVal2, "tmp_less"
+             else build_fcmp Slt, llVal2, "tmp_less"
          | BinGreater ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sgt, "tmp_greater"
-             else build_fcmp Sgt, "tmp_greater"
+             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sgt, llVal2, "tmp_greater"
+             else build_fcmp Sgt, llVal2, "tmp_greater"
          | BinLessEq ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sle, "tmp_lesseq"
-             else build_fcmp Sle, "tmp_lesseq"
+             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sle, llVal2, "tmp_lesseq"
+             else build_fcmp Sle, llVal2, "tmp_lesseq"
          | BinGreaterEq ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sge, "tmp_greatereq"
-             else build_fcmp Sge, "tmp_greatereq"
+             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Sge, llVal2, "tmp_greatereq"
+             else build_fcmp Sge, llVal2, "tmp_greatereq"
          | BinEq ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Eq, "tmp_eq"
-             else build_fcmp Eq, "tmp_eq"
+             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Eq, llVal2, "tmp_eq"
+             else build_fcmp Eq, llVal2, "tmp_eq"
          | BinNotEq -> 
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Ne, "tmp_noteq"
-             else build_fcmp Ne, "tmp_noteq"
+             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Ne, llVal2, "tmp_noteq"
+             else build_fcmp Ne, llVal2, "tmp_noteq"
          | BinAnd ->
-             build_and, "tmp_and"
+             build_and, llVal2, "tmp_and"
          | BinOr ->
-             build_or, "tmp_or"
+             build_or, llVal2, "tmp_or"
          | BinComma -> 
-             build_or, "" (*dummy func*)
+             build_or, llVal2, "" (*dummy func*)
         )
         in
         if strng <> "" then build_fun llVal1 llVal2 strng bldr
         else llVal2
     | EUnAssign (unAssOp, opLocation, expr) -> 
         let llValExpr = codegen_expr expr env bldr in
+        let llValExprLoad = build_load llValExpr "tmp_load" bldr in
         let oneConst = int_type 1 in
         let modifiedLLValExpr = 
         (match unAssOp with
-         (*TODO: the following should be doing a load before anything else if the expression is an identifier/array access*)
-         | UnaryPlusPlus -> build_add llValExpr oneConst "tmp_inc" bldr
-         | UnaryMinusMinus -> build_sub llValExpr oneConst "tmp_inc" bldr
+         | UnaryPlusPlus -> build_add llValExprLoad oneConst "tmp_inc" bldr
+         | UnaryMinusMinus -> build_sub llValExprLoad oneConst "tmp_inc" bldr
         ) in
         let res = build_store modifiedLLValExpr llValExpr bldr in
         (match opLocation with
@@ -292,14 +357,26 @@ and codegen_expr expr env bldr =
             | _ -> exprLLVal
             )
         | bool_type, float_type -> 
-            let const_zero = const_float float_type 0.0 in 
-            build_fcmp Ne const_zero "tmp_fptobool" bldr
+            let constZero = const_float float_type 0.0 in 
+            build_fcmp Ne constZero "tmp_fptobool" bldr
         | bool_type, _ -> 
-            let const_zero = const_int int_type 0 in 
-            build_icmp Ne const_zero "tmp_itobool" bldr
+            let constZero = const_int int_type 0 in 
+            build_icmp Ne constZero "tmp_itobool" bldr
+        | _, _ -> (*this will match casts between pointer types*)
+            let bitcastNeeded = (llTargetType <> llSourceType) in (*this comparison might not work...*)
+            let actualLLVal =
+            (match expr with
+             | EId _ 
+             | EUnary(UnaryDeref, _) -> build_load "tmp_load" bldr
+             | EUnary(UnaryRef, _) -> exprLLVal (*should do nothing, since the exprLLVal is the result of getelementpointer?*)
+             | _ -> exprLLVal
+            ) in
+            if bitcastNeeded then 
+                build_bitcast actualLLVal llTargetType "tmp_ptrtoptr" bldr
+            else
+                actualLLVal
         ) in
         convResult
-
 
 and locate_llval env name = 
     try
