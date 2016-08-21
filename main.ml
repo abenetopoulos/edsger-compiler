@@ -2,6 +2,9 @@ open Lexer
 open Format
 open Semantic
 open Ast
+open Codegen
+open Llvm
+open Llvm_analysis
 
 let () =
     let cin,fname =
@@ -14,7 +17,14 @@ let () =
         Parser.prog (Lexer.read (fname :: [])) lexbuf;
         (*print_ast !astTree;*) (*NOTE: enable this at your own risk!(see comment in ast.ml)*)
         check_ast !astTree;
-        codegen !astTree;
+        let llm = code_gen !astTree in
+        (match (verify_module llm) with
+         | None -> ()
+         | Some e ->
+            Printf.printf "Invalid module: %s\n" e
+        );
+        let outName = fname ^ ".out" in
+        print_module outName llm;
         exit 0
      with
         | Failure msg         -> print_endline ("Failure --- " ^ msg); exit 1

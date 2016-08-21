@@ -2,6 +2,10 @@ OCAMLC=ocamlc -g
 OCAMLOPT=ocamlopt -g
 COMPFLAGS= -g
 CAMLP5_FLAGS=-pp "camlp5o ./extend.cmo"
+LLVM_PATH=/usr/lib/llvm-3.5/lib/
+LLVM_VERS=llvm-3.5
+LLVM_FLAGS=-cc g++ -ccopt -L$(LLVM_PATH) -I +$(LLVM_VERS)
+LLVM_FILES=llvm.cmxa llvm_analysis.cmxa
 
 all:
 	make semantic
@@ -10,8 +14,8 @@ all:
 	ocamlopt -c parser.mli
 	ocamlopt -c parser.ml
 	ocamlopt -c lexer.ml
-	ocamlopt -c main.ml
-	ocamlopt ast.cmx Error.cmx Hashcons.cmx Identifier.cmx Types.cmx Symbol.cmx semantic.cmx parser.cmx lexer.cmx main.cmx -o edsgerc
+	ocamlopt -I +$(LLVM_VERS) -c main.ml
+	ocamlopt $(LLVM_FLAGS) $(LLVM_FILES) ast.cmx Error.cmx Hashcons.cmx Identifier.cmx Types.cmx Symbol.cmx semantic.cmx parser.cmx lexer.cmx codegen.cmx main.cmx -o edsgerc
 
 depend:
 	make extend
@@ -21,6 +25,7 @@ depend:
 	make types
 	make symbol
 	make ast
+	make codegen
 
 extend: extend.ml
 	$(OCAMLC) $(COMPFLAGS) -pp "camlp5o pa_extend.cmo q_MLast.cmo" -I `camlp5 -where` -c $< 
@@ -60,6 +65,11 @@ semantic: semantic.ml
 	$(OCAMLOPT) -i semantic.ml > semantic.mli
 	$(OCAMLOPT) -c semantic.mli
 	$(OCAMLOPT) -c semantic.ml
+
+codegen: codegen.ml
+	$(OCAMLOPT) -I +llvm-3.5 -i codegen.ml > codegen.mli
+	$(OCAMLOPT) -I +llvm-3.5 -c codegen.mli
+	$(OCAMLOPT) -I +llvm-3.5 -c codegen.ml
 
 
 lexer.ml: lexer.mll

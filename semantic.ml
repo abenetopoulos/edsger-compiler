@@ -43,15 +43,15 @@ let rec type_matcher bType pointerCnt arrOption =
     in
     let extraPntr = 
     (match arrOption with
-    | None -> 0
-    | Some x -> let (type1, _) = check_expr x in
-                if not (equalType type1 TYPE_int) then exit 1 else 1
+     | None -> 0
+     | Some x -> 
+        let (type1, _) = check_expr x in
+        if not (equalType type1 TYPE_int) then exit 1 else 1
     )
     in
-    (
-    match pointerCnt with
-    | 0 -> if (extraPntr = 0) then basic else TYPE_pointer(basic, 1)
-    | _ -> TYPE_pointer (basic, pointerCnt + extraPntr)
+    (match pointerCnt with
+     | 0 -> if (extraPntr = 0) then basic else TYPE_pointer(basic, 1)
+     | _ -> TYPE_pointer (basic, pointerCnt + extraPntr)
     )
 
 and get_act_param_strings exprs = 
