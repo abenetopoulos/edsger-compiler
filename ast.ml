@@ -331,6 +331,7 @@ and print_ast_expr ppf ast =
     );
     print_ast_expr ppf expr
   | EBinOp (binaryOp, expr1, expr2)  ->
+    fprintf ppf "(";
     print_ast_expr ppf expr1;
     let printfun = fprintf ppf in 
     (match binaryOp with
@@ -350,6 +351,7 @@ and print_ast_expr ppf ast =
     | BinComma -> printfun ","
     );
     print_ast_expr ppf expr2;
+    fprintf ppf ")";
   | EUnAssign (unaryAss, assLocation, expr) ->
     (match assLocation with
     | LocLeft -> ast_print_un_ass ppf unaryAss; print_ast_expr ppf expr

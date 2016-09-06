@@ -1,0 +1,24 @@
+#include "stdio.h"
+
+double globalDouble;
+
+void main() {
+    int mainInteger;
+    char mainCharacter;
+
+    int localFunc (int a, int b) {
+        int res;
+        int test;
+        int arr[3];
+        int *parr;
+        res = 42 + a;
+        //parr = &res;
+
+        return res;
+    }
+
+    mainInteger = 42;
+    globalDouble = 42.12;
+    mainCharacter = 'a';
+    writeString("Hello there\n");
+}

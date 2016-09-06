@@ -1,11 +1,13 @@
 (*TODO:
+  - referencing a variable causes segmentation fault. investigate
   - make binary and/or short-circuit
-  - currently we don't handle string arguments properly. They need to be stored as constants, and then
-      passed to functions as pointers to char (verify_module warns about this)
-  - when a function returns void, there shouldn't be a name to the left of the function call
-    verify_module: "Instruction has a name, but provides a void value!"
+  - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
+
+(* Things which won't work:
+   - anything involving labels
+ * *)
 
 open Llvm
 open Ast
@@ -82,7 +84,7 @@ let rec generate_code node scope envOpt bldr =
                     match additional with 
                     | None -> (build_alloca basellType vName bldr)
                     | Some nItems -> (build_array_alloca basellType nItems vName bldr)
-                in
+            in
                 Hashtbl.add env vName llval
                 ) additionalllTypeOptions
     | FunDecl (OType(bType, pointerCnt), name, paramOption) ->
@@ -111,7 +113,10 @@ let rec generate_code node scope envOpt bldr =
             Array.iteri (fun i a ->
                 let n = nameArray.(i) in
                 set_value_name n a;
-                Hashtbl.add env n a) (params func)
+                let aType = type_of a in
+                let llStack = build_alloca aType n bldr in
+                let storedLL = build_store a llStack bldr in
+                Hashtbl.add env n llStack) (params func)
         in
         let _ = List.iter (fun d -> 
                                 let insBlock = insertion_block bldr in 
@@ -181,7 +186,6 @@ and codegen_stmt stmt env labels bldr =
         ignore (build_br mergeBB bldr);
 
         position_at_end mergeBB bldr
-
     | SFor (labelOption, initialization, condition, afterthought, stmt) ->
         (*let initializationLLVal = codegen_expr initialization env bldr in*)
         (match initialization with
@@ -284,24 +288,35 @@ and codegen_expr expr env bldr =
             let ascii = Char.code c in
             const_int char_type ascii
     | EDouble d -> const_float double_type d
-    | EString s -> const_stringz llctx s
+    | EString s -> 
+        let stringConstInit = const_stringz llctx s in
+        let stringConst = define_global ".str" stringConstInit llm in 
+        let constZero = const_int int_type 0 in
+        build_gep stringConst [|constZero; constZero|] "tmp_str" bldr
     | ENull -> const_null int_type  (*NOTE: type is irrelevant to us*)
     | EFCall (fName, exprList) ->
         (match lookup_function fName llm with
          | None -> raise (Terminate "Function couldn't be found?")
          | Some funLLValue ->
+            let fType = element_type (type_of funLLValue) in
             let args = 
                 (match exprList with 
                  | None -> [||]
-                 | Some eList -> Array.of_list (List.map (fun e -> codegen_expr e env bldr) eList) 
+                 (*| Some eList -> Array.of_list (List.map (fun e -> codegen_expr e env bldr) eList)*)
+                 | Some eList -> Array.of_list (process_args eList (param_types fType) env bldr)
                 )
             in
-            build_call funLLValue args "calltmp" bldr
+            let str = 
+                if (return_type fType = non_type) then
+                    ""
+                else
+                    "tmp_call"
+            in
+            build_call funLLValue args str bldr
         )
     | EArray (aExpr, ArrExp idxExpr) -> 
         let exprLLV = codegen_expr aExpr env bldr in
         let baseVal = exprLLV in (*aExpr is either an identifier or a function call? either way, we shouldn't load it I think*)
-        (*let baseVal = locate_llval env aName in*)
         let offset = 
             let partial = codegen_expr idxExpr env bldr in
             (match idxExpr with
@@ -315,8 +330,10 @@ and codegen_expr expr env bldr =
         let exprLLVal = codegen_expr uExpr env bldr in
         let exprValType = type_of exprLLVal in
         let constZero = const_int int_type 0 in
+        let _ = dump_value exprLLVal in
+        let _ = dump_type (type_of exprLLVal) in
         (match unaryOp with
-         | UnaryRef -> build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr 
+         | UnaryRef -> build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr
          | UnaryDeref ->
              let ptrLLVal = build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr in
              build_load ptrLLVal "tmp_load" bldr
@@ -340,8 +357,27 @@ and codegen_expr expr env bldr =
         )
     | EBinOp (binOp, opand1, opand2) ->
         let llVal1 = codegen_expr opand1 env bldr in
-        let llValType = type_of llVal1 in
+        let llValType = 
+            (match (classify_type (type_of llVal1)) with
+             | Pointer -> element_type (type_of llVal1) 
+             | _ -> type_of llVal1
+            )
+        in
+        let llVal1 = 
+            (match opand1 with
+             | EId _
+             | EArray _ -> build_load llVal1 "tmp_load" bldr
+             | _ -> llVal1
+            )
+        in
         let llVal2 = codegen_expr opand2 env bldr in
+        let llVal2 = 
+            (match opand2 with
+             | EId _
+             | EArray _ -> build_load llVal2 "tmp_load" bldr
+             | _ -> llVal2
+            )
+        in
         let build_fun, llVal2, strng =
         (match binOp with
          | BinDiv -> 
@@ -413,7 +449,12 @@ and codegen_expr expr env bldr =
         let llVal2 = codegen_expr expr2 env bldr in
         let rightHandLLVal = 
             (match binAssOp with
-            | BinAssign -> llVal2
+            | BinAssign -> 
+                (match expr2 with
+                 | EId _
+                 | EArray _ -> build_load llVal2 "tmp_load" bldr
+                 | _ -> llVal2
+                )
             | BinAssignMulti -> codegen_expr (EBinOp (BinMulti, expr1, expr2)) env bldr
             | BinAssignDiv -> codegen_expr (EBinOp (BinDiv, expr1, expr2)) env bldr
             | BinAssignMod -> codegen_expr (EBinOp (BinMod, expr1, expr2)) env bldr
@@ -557,7 +598,6 @@ and locate_llval env name =
             dump_module llm;
             exit 1
                         
-
 and get_llvm_type bType cnt =
     match cnt with
     | 0 ->
@@ -570,6 +610,17 @@ and get_llvm_type bType cnt =
         )
     | _ as num ->
         pointer_type (get_llvm_type bType (num - 1))
+
+and process_args eList paramTypeArray env bldr = 
+    let paramTypeList = Array.to_list paramTypeArray in
+    let aux e p = 
+        let eLLVal = codegen_expr e env bldr in
+        let eType = type_of eLLVal in
+        if (eType = p) then eLLVal
+        else
+            build_load eLLVal "tmp_load" bldr
+    in
+    List.map2 (fun e p -> aux e p) eList paramTypeList
 
 and make_param_array paramOption = 
     match paramOption with
@@ -594,6 +645,9 @@ let code_gen ast =
     match ast with
     | [] -> raise (Terminate "AST is empty")
     | _ as tree ->
-        let bldr = builder llctx in
-        let _ = List.iter (fun x -> generate_code x SGlobal None bldr) tree in
-        llm
+        try
+            let bldr = builder llctx in
+            let _ = List.iter (fun x -> generate_code x SGlobal None bldr) tree in
+            llm
+        with
+        | _ -> dump_module llm; exit 1

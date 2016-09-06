@@ -70,7 +70,7 @@
 %left AND
 %nonassoc EQUALITIES
 %nonassoc EQ NOTEQ GREATEREQ GREATER LESSEQ LESS
-%left OTHER_BINS
+(*%left OTHER_BINS*)
 %left PLUS MINUS
 %left MULTI DIV MOD
 %nonassoc LEFT_PAREN
@@ -172,7 +172,7 @@ label:
 
 expression:
     | ID                                                                   { EId $1 }
-    | LEFT_PAREN; expression; RIGHT_PAREN                                  { EExpr $2 }
+    | LEFT_PAREN; expression; RIGHT_PAREN                                  { $2 }
     | TRUE                                                                 { EBool true }
     | FALSE                                                                { EBool false }
     | NULL                                                                 { ENull }
@@ -182,14 +182,15 @@ expression:
     | STRING                                                               { EString $1 }
     | ID; LEFT_PAREN; expression_list?; RIGHT_PAREN                        { EFCall ($1, $3) }
     | expression; array_exp                                                { EArray ($1, $2) } 
-    | unary_op; expression                                                 { EUnary ($1, $2) }     %prec AMBER
-    | expression; lower_binary_op; expression                                 { EBinOp ($2, $1, $3) }     %prec EQUALITIES
-    | expression; other_binary_op; expression                                    { EBinOp ($2, $1, $3) }     %prec OTHER_BINS
+    | unary_op; expression                                                 { EUnary ($1, $2) }         %prec AMBER
+    | expression; lower_binary_op; expression                              { EBinOp ($2, $1, $3) }     %prec EQUALITIES
+    | expression; pm_binary_op; expression                                 { EBinOp ($2, $1, $3) }     %prec PLUS
+    | expression; mdm_binary_op; expression                                { EBinOp ($2, $1, $3) }     %prec MULTI
     | unary_assign; expression                                             { EUnAssign ($1, LocLeft, $2) }     %prec PLUSPLUS_PRE
     | expression; unary_assign                                             { EUnAssign ($2, LocRight, $1) }
-    | expression; binary_assign; expression                                { EBinAssign ($2, $1, $3) }     %prec ASSIGN_MINUS
-    | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { ECast ($2, $4) }     %prec LEFT_PAREN
-    | expression; QUESTION_MARK; expression; COLON; expression             { EConditional ($1, $3, $5) }     %prec QUEST
+    | expression; binary_assign; expression                                { EBinAssign ($2, $1, $3) }      %prec ASSIGN_MINUS
+    | LEFT_PAREN; object_type; RIGHT_PAREN; expression                     { ECast ($2, $4) }               %prec LEFT_PAREN
+    | expression; QUESTION_MARK; expression; COLON; expression             { EConditional ($1, $3, $5) }    %prec QUEST
     | new_expression                                                       { $1 }
     | DELETE; expression                                                   { EDelete $2 }
     ;
@@ -231,12 +232,23 @@ unary_op:
     | NOT                                                                  { UnaryNot }
     ;
 
+pm_binary_op:
+    | PLUS                                                                 { BinPlus }
+    | MINUS                                                                { BinMinus }
+
+mdm_binary_op:
+    | DIV                                                                  { BinDiv }
+    | MULTI                                                                { BinMulti }
+    | MOD                                                                  { BinMod }
+
+    (*
 other_binary_op:
     | DIV                                                                  { BinDiv }
     | MULTI                                                                { BinMulti }
     | MOD                                                                  { BinMod }
     | PLUS                                                                 { BinPlus }
     | MINUS                                                                { BinMinus }
+    *)
 
 lower_binary_op:    
     | LESS                                                                 { BinLess }

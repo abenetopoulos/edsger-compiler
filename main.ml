@@ -15,15 +15,15 @@ let () =
     let lexbuf = Lexing.from_channel cin in
     (try
         Parser.prog (Lexer.read (fname :: [])) lexbuf;
-        (*print_ast !astTree;*) (*NOTE: enable this at your own risk!(see comment in ast.ml)*)
-        check_ast !astTree;
+        (*print_ast !astTree; (*NOTE: enable this at your own risk!(see comment in ast.ml)*)
+        check_ast !astTree;*)
         let llm = code_gen !astTree in
         (match (verify_module llm) with
          | None -> ()
          | Some e ->
             Printf.printf "Invalid module: %s\n" e
         );
-        let outName = fname ^ ".out" in
+        let outName = fname ^ ".ll" in
         print_module outName llm;
         exit 0
      with
