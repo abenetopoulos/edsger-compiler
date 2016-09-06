@@ -59,7 +59,32 @@ rule read incFiles=
         ID (Lexing.lexeme lexbuf)
     }
     | const_char {
-        CHAR (String.get (Lexing.lexeme lexbuf) 0)
+        let firstChar = (String.get (Lexing.lexeme lexbuf) 1) in
+        if (firstChar = '\\') then
+            let secondChar = (String.get (Lexing.lexeme lexbuf) 2) in
+            if (secondChar = 'n') then
+                CHAR '\n'
+            else if (secondChar = 't') then
+                CHAR '\t'
+            else if (secondChar = 'r') then
+                CHAR '\r'
+            else if (secondChar = '0') then
+                CHAR (Char.chr 0)
+            else (*hex*) begin
+                let aux c = 
+                    let a = Char.code c in
+                    if (a > 47 && a < 58) then
+                        a - 48
+                    else
+                        a - 87
+                in
+                let firstDig = aux (String.get (Lexing.lexeme lexbuf) 3) in
+                let secondDig = aux (String.get (Lexing.lexeme lexbuf) 4) in
+                let charAscii = 16 * firstDig + secondDig in
+                CHAR (Char.chr charAscii)
+            end
+        else
+            CHAR firstChar
     }
     | int_in {
         INT (int_of_string (Lexing.lexeme lexbuf)) 

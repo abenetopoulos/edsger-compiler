@@ -1,11 +1,16 @@
 (*TODO:
-  - referencing a variable causes segmentation fault. investigate
   - make binary and/or short-circuit
+  - nested functions end up being global functions in llvm ir. change how they are named to avoid
+    name clashes.
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
 
-(* Things which won't work:
+(*NOTE: 
+  - changed what unary deref returns, might cause issues, keep in mind
+ * *)
+
+(*NOTE: Things which won't work:
    - anything involving labels
  * *)
 
@@ -103,7 +108,7 @@ let rec generate_code node scope envOpt bldr =
              | None -> 
                 let e:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
                 e
-             | Some e -> Hashtbl.copy e 
+             | Some e -> Hashtbl.copy e
              (*get copy. any declarations local to the new function will not affect the 
               * parent, but the child has access to the parent's decls*)
             )
@@ -285,6 +290,7 @@ and codegen_expr expr env bldr =
             const_int bool_type x
     | EInt i -> const_int int_type i
     | EChar c -> 
+            ignore (Printf.printf "%c\n" c);
             let ascii = Char.code c in
             const_int char_type ascii
     | EDouble d -> const_float double_type d
@@ -330,13 +336,14 @@ and codegen_expr expr env bldr =
         let exprLLVal = codegen_expr uExpr env bldr in
         let exprValType = type_of exprLLVal in
         let constZero = const_int int_type 0 in
-        let _ = dump_value exprLLVal in
-        let _ = dump_type (type_of exprLLVal) in
         (match unaryOp with
-         | UnaryRef -> build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr
+         | UnaryRef -> exprLLVal (*all llVals which could be referenced are stored as pointers already...*)
+                 (*build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr*)
          | UnaryDeref ->
-             let ptrLLVal = build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr in
-             build_load ptrLLVal "tmp_load" bldr
+             (*let ptrLLVal = build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr in*)
+             let ptrLLVal = build_load exprLLVal "tmp_ptr" bldr in
+             ptrLLVal
+             (*build_load ptrLLVal "tmp_load" bldr*)
          | UnaryPlus -> exprLLVal
          | UnaryMinus -> 
             (match uExpr with
@@ -421,6 +428,13 @@ and codegen_expr expr env bldr =
              if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Ne, llVal2, "tmp_noteq"
              else build_fcmp Fcmp.One, llVal2, "tmp_noteq"
          | BinAnd ->
+             (*let startBB = insertion_block bldr in
+             let parentFunction = block_parent startBB in
+             let firstTrueBB = append_block llctx "first_true" parentFunction in
+             position_at_end firstTrueBB bldr;
+
+             let llVal2 = codegen_expr opand2 env bldr in
+             let newTrueBB = insertion_block bldr in*)
              build_and, llVal2, "tmp_and"
          | BinOr ->
              build_or, llVal2, "tmp_or"
@@ -452,7 +466,8 @@ and codegen_expr expr env bldr =
             | BinAssign -> 
                 (match expr2 with
                  | EId _
-                 | EArray _ -> build_load llVal2 "tmp_load" bldr
+                 | EArray _ 
+                 | EUnary(UnaryDeref, _) -> build_load llVal2 "tmp_load" bldr
                  | _ -> llVal2
                 )
             | BinAssignMulti -> codegen_expr (EBinOp (BinMulti, expr1, expr2)) env bldr

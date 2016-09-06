@@ -1,4 +1,12 @@
-(*TODO: check that labels in SBreak/SReturn/SContinue exist. Do stuff with labels in SFor*)
+(*TODO: 
+   - check that labels in SBreak/SReturn/SContinue exist. Do stuff with labels in SFor
+   - during binary assignment, we currently allow the following:
+        int *pint;
+        int *anotherPint;
+        anotherPint = &pint;   
+     this should not be allowed without a cast
+
+*)
 
 open Ast
 open Types
