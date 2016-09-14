@@ -1,5 +1,4 @@
 (*TODO:
-  - make binary and/or short-circuit
   - nested functions end up being global functions in llvm ir. change how they are named to avoid
     name clashes.
   - test everything!
@@ -7,7 +6,7 @@
 *)
 
 (*NOTE: 
-  - changed what unary deref returns, might cause issues, keep in mind
+  - changed what unary deref returns, might cause issues, keep in mind [6/9/16]
  * *)
 
 (*NOTE: Things which won't work:
@@ -138,59 +137,34 @@ and codegen_stmt stmt env labels bldr =
     | SExpr expr -> ignore (codegen_expr expr env bldr)
     | SBlock stmts -> ignore (List.hd (List.rev (List.map (fun d -> codegen_stmt d env labels bldr) stmts)))
     | SIf (condExpr, stmt) ->
-        let conditionLLVal = codegen_expr condExpr env bldr in
-        let conditionLLVal =
-        (match condExpr with
-         | EId _ -> build_load conditionLLVal "tmp_load" bldr
-         | _ -> conditionLLVal
-        ) in
-        let startBB = insertion_block bldr in
-        let parentFunction = block_parent startBB in
-        let thenBB = append_block llctx "then" parentFunction in
+        (*let thenBB, _, mergeBB = codegen_conditional_expr condExpr false None None env bldr in*)
+        let thenBB, mergeBB = codegen_conditional_expr condExpr None None env bldr in
         position_at_end thenBB bldr;
 
-        (*generate_code stmt SInternal bldr;*)
         ignore (codegen_stmt stmt env labels bldr);
         let newThenBB = insertion_block bldr in
-        let mergeBB = append_block llctx "if_cont" parentFunction in
-        position_at_end startBB bldr;
-
-        ignore (build_cond_br conditionLLVal thenBB mergeBB bldr);
         position_at_end newThenBB bldr;
         ignore (build_br mergeBB bldr);
-
-        position_at_end mergeBB bldr
+        position_at_end mergeBB bldr;
     | SIfElse (condExpr, stmt1, stmt2) -> 
-        let conditionLLVal = codegen_expr condExpr env bldr in
-        let conditionLLVal =
-        (match condExpr with
-         | EId _ -> build_load conditionLLVal "tmp_load" bldr
-         | _ -> conditionLLVal
-        ) in
-        let startBB = insertion_block bldr in
-        let parentFunction = block_parent startBB in
-        let thenBB = append_block llctx "then" parentFunction in
+        (*let thenBB, elseBBOpt, mergeBB = codegen_conditional_expr condExpr true None None env bldr in*)
+        let thenBB,elseBB = codegen_conditional_expr condExpr None None env bldr in
         position_at_end thenBB bldr;
 
-        (*generate_code stmt1 SInternal bldr;*)
         ignore (codegen_stmt stmt1 env labels bldr);
         let newThenBB = insertion_block bldr in
-        let elseBB = append_block llctx "else" parentFunction in
+        let parentFunction = block_parent newThenBB in
         position_at_end elseBB bldr;
 
-        (*generate_code stmt2 SInternal bldr;*)
         ignore (codegen_stmt stmt2 env labels bldr);
-        let newElseBB = insertion_block bldr in
-        let mergeBB = append_block llctx "if_cont" parentFunction in
-        position_at_end startBB bldr;
 
-        ignore (build_cond_br conditionLLVal thenBB elseBB bldr);
+        let newElseBB = insertion_block bldr in
+        let mergeBB = append_block llctx "merge" parentFunction in
         position_at_end newThenBB bldr;
         ignore (build_br mergeBB bldr);
         position_at_end newElseBB bldr;
-        ignore (build_br mergeBB bldr);
-
-        position_at_end mergeBB bldr
+        ignore(build_br mergeBB bldr);
+        position_at_end mergeBB bldr;
     | SFor (labelOption, initialization, condition, afterthought, stmt) ->
         (*let initializationLLVal = codegen_expr initialization env bldr in*)
         (match initialization with
@@ -290,7 +264,6 @@ and codegen_expr expr env bldr =
             const_int bool_type x
     | EInt i -> const_int int_type i
     | EChar c -> 
-            ignore (Printf.printf "%c\n" c);
             let ascii = Char.code c in
             const_int char_type ascii
     | EDouble d -> const_float double_type d
@@ -362,88 +335,109 @@ and codegen_expr expr env bldr =
              | _ -> build_not exprLLVal "tmp_not" bldr
             )
         )
-    | EBinOp (binOp, opand1, opand2) ->
-        let llVal1 = codegen_expr opand1 env bldr in
-        let llValType = 
+    | EBinOp (binOp, opand1, opand2) as binExpr ->
+        (match binOp with
+         | BinAnd ->
+            let trueBB, falseBB = codegen_conditional_expr binExpr None None env bldr in
+            let parentFunction = block_parent trueBB in
+            let mergeBB = append_block llctx "merge" parentFunction in
+            position_at_end falseBB bldr;
+
+            ignore (build_br mergeBB bldr);
+            position_at_end trueBB bldr;
+            ignore (build_br mergeBB bldr);
+            position_at_end mergeBB bldr;
+
+            let constFalse = const_int bool_type 0 in
+            let constTrue = const_int bool_type 1 in
+            build_phi [(constFalse, falseBB); (constTrue, trueBB)] "tmp_phi" bldr
+         | BinOr ->
+            let trueBB, falseBB = codegen_conditional_expr binExpr None None env bldr in
+            let parentFunction = block_parent trueBB in
+            let mergeBB = append_block llctx "merge" parentFunction in
+            position_at_end falseBB bldr;
+
+            ignore (build_br mergeBB bldr);
+            position_at_end trueBB bldr;
+            ignore (build_br mergeBB bldr);
+            position_at_end mergeBB bldr;
+
+            let constFalse = const_int bool_type 0 in
+            let constTrue = const_int bool_type 1 in
+            build_phi [(constFalse, falseBB); (constTrue, trueBB)] "tmp_phi" bldr
+         | _ as bop ->
+            let llVal1 = codegen_expr opand1 env bldr in
+            let llValType = 
             (match (classify_type (type_of llVal1)) with
              | Pointer -> element_type (type_of llVal1) 
              | _ -> type_of llVal1
             )
-        in
-        let llVal1 = 
+            in
+            let llVal1 = 
             (match opand1 with
              | EId _
              | EArray _ -> build_load llVal1 "tmp_load" bldr
              | _ -> llVal1
             )
-        in
-        let llVal2 = codegen_expr opand2 env bldr in
-        let llVal2 = 
+            in
+            let llVal2 = codegen_expr opand2 env bldr in
+            let llVal2 = 
             (match opand2 with
              | EId _
              | EArray _ -> build_load llVal2 "tmp_load" bldr
              | _ -> llVal2
             )
-        in
-        let build_fun, llVal2, strng =
-        (match binOp with
-         | BinDiv -> 
-             if (llValType = int_type) then build_sdiv, llVal2, "tmp_div"
-             else build_fdiv, llVal2, "tmp_div"
-         | BinMulti -> 
-             if (llValType = int_type) then build_mul, llVal2, "tmp_mul"
-             else build_fmul, llVal2, "tmp_mul" 
-         | BinMod ->
-             if (llValType = int_type) then build_srem, llVal2, "tmp_mod" 
-             else build_frem, llVal2, "tmp_mod" 
-         | BinPlus ->
-             if (llValType = int_type) then build_add, llVal2, "tmp_add" 
-             else if (size_of llValType) = (size_of (pointer_type int_type)) then 
-                let retVal = build_gep llVal1 [|llVal2|] "tmp_ptradd" bldr in
-                build_add, retVal, "" (*dummy func*)
-             else build_fadd, llVal2, "tmp_add" 
-         | BinMinus ->
-             if (llValType = int_type) then build_sub, llVal2, "tmp_sub"
-             else if (size_of llValType) = (size_of (pointer_type int_type)) then
-                 let negllVal2 = build_neg llVal2 "tmp_neg" bldr in
-                 let retVal = build_gep llVal1 [|negllVal2|] "tmp_ptradd" bldr in
-                 build_sub, retVal, "" (*dummy func*)
-             else build_fsub, llVal2, "tmp_sub"
-         | BinLess ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Slt, llVal2, "tmp_less"
-             else build_fcmp Fcmp.Olt, llVal2, "tmp_less"
-         | BinGreater ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Sgt, llVal2, "tmp_greater"
-             else build_fcmp Fcmp.Ogt, llVal2, "tmp_greater"
-         | BinLessEq ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Sle, llVal2, "tmp_lesseq"
-             else build_fcmp Fcmp.Ole, llVal2, "tmp_lesseq"
-         | BinGreaterEq ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Sge, llVal2, "tmp_greatereq"
-             else build_fcmp Fcmp.Oge, llVal2, "tmp_greatereq"
-         | BinEq ->
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Eq, llVal2, "tmp_eq"
-             else build_fcmp Fcmp.Oeq, llVal2, "tmp_eq"
-         | BinNotEq -> 
-             if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Ne, llVal2, "tmp_noteq"
-             else build_fcmp Fcmp.One, llVal2, "tmp_noteq"
-         | BinAnd ->
-             (*let startBB = insertion_block bldr in
-             let parentFunction = block_parent startBB in
-             let firstTrueBB = append_block llctx "first_true" parentFunction in
-             position_at_end firstTrueBB bldr;
-
-             let llVal2 = codegen_expr opand2 env bldr in
-             let newTrueBB = insertion_block bldr in*)
-             build_and, llVal2, "tmp_and"
-         | BinOr ->
-             build_or, llVal2, "tmp_or"
-         | BinComma -> 
-             build_or, llVal2, "" (*dummy func*)
+            in
+            let build_fun, llVal2, strng =
+            (match bop with
+             | BinDiv -> 
+                 if (llValType = int_type) then build_sdiv, llVal2, "tmp_div"
+                 else build_fdiv, llVal2, "tmp_div"
+             | BinMulti -> 
+                 if (llValType = int_type) then build_mul, llVal2, "tmp_mul"
+                 else build_fmul, llVal2, "tmp_mul" 
+             | BinMod ->
+                 if (llValType = int_type) then build_srem, llVal2, "tmp_mod" 
+                 else build_frem, llVal2, "tmp_mod" 
+             | BinPlus ->
+                 if (llValType = int_type) then build_add, llVal2, "tmp_add" 
+                 else if (size_of llValType) = (size_of (pointer_type int_type)) then 
+                    let retVal = build_gep llVal1 [|llVal2|] "tmp_ptradd" bldr in
+                    build_add, retVal, "" (*dummy func*)
+                 else build_fadd, llVal2, "tmp_add" 
+             | BinMinus ->
+                 if (llValType = int_type) then build_sub, llVal2, "tmp_sub"
+                 else if (size_of llValType) = (size_of (pointer_type int_type)) then
+                     let negllVal2 = build_neg llVal2 "tmp_neg" bldr in
+                     let retVal = build_gep llVal1 [|negllVal2|] "tmp_ptradd" bldr in
+                     build_sub, retVal, "" (*dummy func*)
+                 else build_fsub, llVal2, "tmp_sub"
+             | BinLess ->
+                 if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Slt, llVal2, "tmp_less"
+                 else build_fcmp Fcmp.Olt, llVal2, "tmp_less"
+             | BinGreater ->
+                 if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Sgt, llVal2, "tmp_greater"
+                 else build_fcmp Fcmp.Ogt, llVal2, "tmp_greater"
+             | BinLessEq ->
+                 if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Sle, llVal2, "tmp_lesseq"
+                 else build_fcmp Fcmp.Ole, llVal2, "tmp_lesseq"
+             | BinGreaterEq ->
+                 if (llValType = int_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Sge, llVal2, "tmp_greatereq"
+                 else build_fcmp Fcmp.Oge, llVal2, "tmp_greatereq"
+             | BinEq ->
+                 if (llValType = int_type || llValType = bool_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Eq, llVal2, "tmp_eq"
+                 else build_fcmp Fcmp.Oeq, llVal2, "tmp_eq"
+             | BinNotEq -> 
+                 if (llValType = int_type || llValType = bool_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Ne, llVal2, "tmp_noteq"
+                 else build_fcmp Fcmp.One, llVal2, "tmp_noteq"
+                      | BinComma -> 
+                 build_or, llVal2, "" (*dummy func*)
+             | _ -> raise (Terminate "well, this is quite the failure!\n")
+            )
+            in
+            if strng <> "" then build_fun llVal1 llVal2 strng bldr
+            else llVal2
         )
-        in
-        if strng <> "" then build_fun llVal1 llVal2 strng bldr
-        else llVal2
     | EUnAssign (unAssOp, opLocation, expr) -> 
         let llValExpr = codegen_expr expr env bldr in
         let llValExprLoad = build_load llValExpr "tmp_load" bldr in
@@ -656,6 +650,97 @@ and make_param_array paramOption =
         let types = List.map (fun (_, b) -> b) llTypedParams in
         Array.of_list names, Array.of_list types
 
+and codegen_conditional_expr condExpr  trueBBOption falseBBOption env bldr = (* caller is responsible for adding 
+                                                                              * branches at the end of basic blocks *)
+    let aux e trueBBOption falseBBOption =
+        let exprLLVal = codegen_expr e env bldr in
+        let _ = Printf.printf "%s\n" (string_of_llvalue exprLLVal) in
+        let exprLLVal = 
+            (match e with
+             | EId _
+             | EArray _ -> 
+                let loadedLLVal = build_load exprLLVal "tmp_load" bldr in
+                let constZero = const_int bool_type 0 in
+                build_icmp Icmp.Ne loadedLLVal constZero "tmp_cmp" bldr
+             | EFCall _ ->
+                let constZero = const_int bool_type 0 in
+                build_icmp Icmp.Ne exprLLVal constZero "tmp_cmp" bldr
+             | _ -> exprLLVal
+            )
+        in
+        let startBB = insertion_block bldr in
+        let parentFunction = block_parent startBB in
+        let trueBB = 
+        (match trueBBOption with
+         | None -> append_block llctx "cond_true" parentFunction
+         | Some bb -> bb
+        ) in
+        let falseBB =
+        (match falseBBOption with
+         | None -> append_block llctx "cond_false" parentFunction
+         | Some bb -> bb
+        ) in
+        position_at_end startBB bldr;
+        ignore (build_cond_br exprLLVal trueBB falseBB bldr);
+        (trueBB, falseBB);
+    in
+    match condExpr with
+    | EBinOp (binOp, opand1, opand2) as expr ->
+        (match binOp with
+         | BinAnd | BinOr ->
+            let trueBB1, falseBB1 = 
+            (match opand1 with
+             | EBinOp(op1, _, _) as e ->
+                if ((op1 = BinAnd) || (op1 = BinOr)) then
+                    codegen_conditional_expr e trueBBOption falseBBOption env bldr
+                else
+                    if binOp = BinAnd then
+                        aux e None falseBBOption
+                    else
+                        aux e trueBBOption None
+             | _ as op1 ->
+                if binOp = BinAnd then
+                    aux op1 None falseBBOption
+                else
+                    aux op1 trueBBOption None
+            ) in
+            (); 
+
+            if binOp = BinAnd then begin
+                position_at_end trueBB1 bldr;
+                let trueBB2, falseBB2 = 
+                (match opand2 with
+                 | EBinOp(op2, _, _) as e ->
+                    if ((op2 = BinAnd) || (op2 = BinOr)) then
+                        codegen_conditional_expr e trueBBOption (Some falseBB1) env bldr
+                    else
+                        aux e trueBBOption (Some falseBB1)
+                 | _ as op2 ->
+                    aux op2 trueBBOption (Some falseBB1)
+                ) in
+                (trueBB2, falseBB1) 
+            end
+            else begin
+                position_at_end falseBB1 bldr;
+                let trueBB2, falseBB2 =
+                (match opand2 with
+                 | EBinOp(op2, _, _) as e ->
+                    if ((op2 = BinAnd) || (op2 = BinOr)) then
+                        codegen_conditional_expr e (Some trueBB1) falseBBOption env bldr
+                    else
+                        aux e (Some trueBB1) falseBBOption
+                 | _ as op2 ->
+                    aux op2 (Some trueBB1) falseBBOption
+                )
+                in
+                (trueBB1, falseBB2)
+            end
+         | _ ->
+            aux expr trueBBOption falseBBOption
+        )
+    | _ as expr ->
+        aux expr trueBBOption falseBBOption
+
 let code_gen ast =
     match ast with
     | [] -> raise (Terminate "AST is empty")
@@ -665,4 +750,4 @@ let code_gen ast =
             let _ = List.iter (fun x -> generate_code x SGlobal None bldr) tree in
             llm
         with
-        | _ -> dump_module llm; exit 1
+        | _ -> Printf.printf "fuck\n"; dump_module llm; exit 1

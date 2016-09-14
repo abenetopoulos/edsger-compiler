@@ -3,19 +3,18 @@
 double globalDouble;
 
 void main() {
-    int mainInteger;
-    char mainCharacter;
-    int *a, b[3];
+    int a;
+    bool b;
+    bool c;
+    a = 42;
+    b = true;
+    c = a == 42 && b;
 
-    void someFunc();
-
-    mainInteger = 42;
-    globalDouble = 42.12;
-    mainCharacter = 'a';
-    writeString("Hello there\n");
-    if (mainInteger == 42) {
-        mainCharacter = '\x63';
+    if (b == false) {
+        a = -1;    
     }else {
-        globalDouble = 42.12345;
+        a = 0;
     }
+    
 }
+
