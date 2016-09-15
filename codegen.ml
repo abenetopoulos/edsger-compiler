@@ -1,6 +1,7 @@
 (*TODO:
   - nested functions end up being global functions in llvm ir. change how they are named to avoid
     name clashes.
+  - implement nested functions...
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
@@ -165,8 +166,7 @@ and codegen_stmt stmt env labels bldr =
         position_at_end newElseBB bldr;
         ignore(build_br mergeBB bldr);
         position_at_end mergeBB bldr;
-    | SFor (labelOption, initialization, condition, afterthought, stmt) ->
-        (*let initializationLLVal = codegen_expr initialization env bldr in*)
+    | SFor (labelOption, initialization, condition, afterthought, stmt) -> (*this case now [15/9] seems a little toxic...*)
         (match initialization with
          | None -> ()
          | Some i -> ignore (codegen_expr i env bldr)
@@ -177,21 +177,22 @@ and codegen_stmt stmt env labels bldr =
         ignore (build_br loopBB bldr);
 
         position_at_end loopBB bldr;
+        let conditionLLVal = 
         (match condition with
-         | None -> ()
+         | None -> None
          | Some c ->
             let conditionLLVal = codegen_expr c env bldr in
-            ignore
+            let res = 
             (match c with
              | EId _ -> build_load conditionLLVal "tmp_load" bldr
              | _ -> conditionLLVal
-            )
-        );
+            ) in
+            Some res
+        ) in
         let bodyBB = insertion_block bldr in
         let thenBB = append_block llctx "body" parentFunction in
         position_at_end thenBB bldr;
 
-        (*generate_code stmt SInternal bldr;*)
         ignore (codegen_stmt stmt env labels bldr);
 
         let afterthoughtBB = append_block llctx "tmp_afterthought" parentFunction in
@@ -203,7 +204,14 @@ and codegen_stmt stmt env labels bldr =
         );
         ignore (build_br loopBB bldr);
 
+        position_at_end thenBB bldr;
+        ignore (build_br afterthoughtBB bldr);
         let mergeBB = append_block llctx "merge" parentFunction in
+        position_at_end loopBB bldr;
+        (match conditionLLVal with
+         | None -> ignore (build_br thenBB bldr)
+         | Some c -> ignore (build_cond_br c thenBB mergeBB bldr);
+        );
         position_at_end mergeBB bldr;
 
         (match labelOption with
@@ -473,17 +481,34 @@ and codegen_expr expr env bldr =
         in
         build_store rightHandLLVal llVal1 bldr
     | EConditional (exprCondition, exprTrue, exprFalse) -> 
-        let conditionLLVal = 
-            let generated = codegen_expr exprCondition env bldr in
-            (match exprCondition with
-             | EId _ 
-             | EArray _ -> build_load generated "tmp_load" bldr
-             | _ -> generated
-            )
-        in
+        let trueBB, falseBB = codegen_conditional_expr exprCondition None None env bldr in
+        let parentFunc = block_parent trueBB in
+        let mergeBB = append_block llctx "merge" parentFunc in
+        position_at_end trueBB bldr;
+
         let llVal1 = codegen_expr exprTrue env bldr in
+        let llVal1 =
+        (match exprTrue with
+         | EId _ 
+         | EArray _ -> build_load llVal1 "tmp_load" bldr
+         | _ -> llVal1
+        )
+        in
+        ignore (build_br mergeBB bldr);
+
+        position_at_end falseBB bldr;
         let llVal2 = codegen_expr exprFalse env bldr in
-        build_select conditionLLVal llVal1 llVal2 "tmp_conditional" bldr
+        let llVal2 =
+        (match exprFalse with
+         | EId _ 
+         | EArray _ -> build_load llVal2 "tmp_load" bldr
+         | _ -> llVal2
+        )
+        in
+        ignore (build_br mergeBB bldr);
+
+        position_at_end mergeBB bldr;
+        build_phi [(llVal1, trueBB); (llVal2, falseBB)] "tmp_phi" bldr
     | ENew (OType(basicType, pointerCnt), arrayOption) ->
         let llValType = get_llvm_type basicType pointerCnt in
         let countLLVal = 
@@ -654,7 +679,6 @@ and codegen_conditional_expr condExpr  trueBBOption falseBBOption env bldr = (* 
                                                                               * branches at the end of basic blocks *)
     let aux e trueBBOption falseBBOption =
         let exprLLVal = codegen_expr e env bldr in
-        let _ = Printf.printf "%s\n" (string_of_llvalue exprLLVal) in
         let exprLLVal = 
             (match e with
              | EId _
