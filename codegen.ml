@@ -53,10 +53,10 @@ let rec generate_code node scope envOpt bldr =
                  | None -> -1, None
                  | Some expr -> 
                     let env = 
-                        (match envOpt with
-                         | Some e -> e
-                         | None -> raise (Terminate "An environment should have been specified at this point")
-                        )
+                    (match envOpt with
+                     | Some e -> e
+                     | None -> raise (Terminate "An environment should have been specified at this point")
+                    )
                     in
                     let tempVal = codegen_expr expr env bldr in
                     let finalVal = 
@@ -79,17 +79,17 @@ let rec generate_code node scope envOpt bldr =
                 ) additionalllTypeOptions
         else
             let env = 
-                (match envOpt with
-                 | Some e -> e
-                 | None -> raise (Terminate "An environment should have been specified at this point")
-                )
+            (match envOpt with
+             | Some e -> e
+             | None -> raise (Terminate "An environment should have been specified at this point")
+            )
             in
             List.iter (fun (vName, _, additional) -> 
                 let llval = 
-                    match additional with 
-                    | None -> (build_alloca basellType vName bldr)
-                    | Some nItems -> (build_array_alloca basellType nItems vName bldr)
-            in
+                match additional with 
+                | None -> (build_alloca basellType vName bldr)
+                | Some nItems -> (build_array_alloca basellType nItems vName bldr)
+                in
                 Hashtbl.add env vName llval
                 ) additionalllTypeOptions
     | FunDecl (OType(bType, pointerCnt), name, paramOption) ->
@@ -457,8 +457,8 @@ and codegen_expr expr env bldr =
         ) in
         let res = build_store modifiedLLValExpr llValExpr bldr in
         (match opLocation with
-         | LocRight -> llValExpr 
-         | LocLeft -> res
+         | LocRight -> llValExprLoad 
+         | LocLeft -> modifiedLLValExpr
         ) (*NOTE: most likely wrong. will crash and burn. avoid at all costs*)
     | EBinAssign (binAssOp, expr1, expr2) -> 
         let llVal1 = codegen_expr expr1 env bldr in

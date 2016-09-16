@@ -2,19 +2,24 @@
 
 double globalDouble;
 
+int test(int x) {
+    int a;
+    a = 0;
+    a = x--;
+    
+    return a;
+}
+
 void main() {
     int a;
     bool b;
     bool c;
+    int i;
     a = 42;
     b = true;
-    c = a == 42 && b;
 
-    if (b == false) {
-        a = -1;    
-    }else {
-        a = 0;
+    for (; ;) {
+        a++;
     }
-    
 }
 
