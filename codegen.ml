@@ -1,6 +1,4 @@
 (*TODO:
-  - nested functions end up being global functions in llvm ir. change how they are named to avoid
-    name clashes.
   - implement nested functions...
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
@@ -93,15 +91,44 @@ let rec generate_code node scope envOpt bldr =
                 Hashtbl.add env vName llval
                 ) additionalllTypeOptions
     | FunDecl (OType(bType, pointerCnt), name, paramOption) ->
+        (*
         let llType = get_llvm_type bType pointerCnt in
         let _, paramArray = make_param_array paramOption in
         let fType = function_type llType paramArray in
         ignore (declare_function name fType llm)
+        *)
+        () (*NOTE: function declarations seem inconsequential in llvm ir *)
     | FunDef(OType(bType, pointerCnt), name, paramOption, decls, stmts) ->
         let llType = get_llvm_type bType pointerCnt in
-        let nameArray, paramArray = make_param_array paramOption in
+        let nameArray, baseParamArray = make_param_array paramOption in
+        let paramArray = baseParamArray in
+        (*
+        let paramArray = 
+            if scope = SGlobal then baseParamArray
+            else
+                let extraParamOption = get_extra_params decls in
+                (match extraParamOption with
+                 | None -> paramArray
+                 | Some ePs -> Array.concat paramArray ePs
+                )
+        in
+        *)
         let fType = function_type llType paramArray in
-        let func = define_function name fType llm in
+        (*
+        let paramString = 
+            match paramOption with
+            | None -> "N"
+            | Some params -> get_param_string params
+        in
+        let parentFuncName =
+            match parentOpt with
+            | None -> ""
+            | Some pN -> pN ^ "_"
+        in
+        let id = "_" ^ parentFuncName ^ name ^ "_" ^ paramString in
+        *)
+        let id = name in
+        let func = define_function id fType llm in
         let _ = position_at_end (entry_block func) bldr in
         let env = 
             (match envOpt with
@@ -109,8 +136,6 @@ let rec generate_code node scope envOpt bldr =
                 let e:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
                 e
              | Some e -> Hashtbl.copy e
-             (*get copy. any declarations local to the new function will not affect the 
-              * parent, but the child has access to the parent's decls*)
             )
         in
         let labels:(string, llbasicblock) Hashtbl.t = Hashtbl.create (List.length stmts) in (*no label sharing across units*)
@@ -265,7 +290,7 @@ and codegen_stmt stmt env labels bldr =
 
 and codegen_expr expr env bldr =  
     match expr with
-    | EId name -> locate_llval env name
+    | EId name -> locate_llval env name bldr
     | EExpr nExpr -> codegen_expr nExpr env bldr
     | EBool b -> 
             let x = if b = true then 1 else 0 in 
@@ -619,18 +644,24 @@ and codegen_expr expr env bldr =
         in
         convResult
 
-and locate_llval env name = 
+and locate_llval env name bldr = 
     try
         Hashtbl.find env name
     with
     | Not_found -> 
-        let resOption = lookup_global name llm in
-        match resOption with
-        | Some x -> x
-        | None -> 
-            Printf.printf "\x1b[31mError\x1b[0m: Couldn't locate %s during generation.\n" name;
-            dump_module llm;
-            exit 1
+        (try
+            let v = Hashtbl.find env ("_ref" ^ name) in
+            build_load v "tmp_load" bldr
+        with
+        | Not_found ->
+            let resOption = lookup_global name llm in
+            match resOption with
+            | Some x -> x
+            | None -> 
+                Printf.printf "\x1b[31mError\x1b[0m: Couldn't locate %s during generation.\n" name;
+                dump_module llm;
+                exit 1
+        )
                         
 and get_llvm_type bType cnt =
     match cnt with
@@ -667,7 +698,8 @@ and make_param_array paramOption =
                     xName, get_llvm_type bType pointerCnt
             | ParamByRef (xType, xName) ->
                     let OType(bType, pointerCnt) = xType in
-                    xName, get_llvm_type bType (pointerCnt + 1)
+                    (*xName, get_llvm_type bType (pointerCnt + 1)*)
+                    ("_ref" ^ xName), get_llvm_type bType (pointerCnt + 1)
         )
         in
         let llTypedParams = List.map aux paramList in
@@ -764,6 +796,98 @@ and codegen_conditional_expr condExpr  trueBBOption falseBBOption env bldr = (* 
         )
     | _ as expr ->
         aux expr trueBBOption falseBBOption
+
+        (*
+and get_extra_params decls =
+    let extract_deps stmts env =
+        let aux s =
+            let vars = get_vars s in
+            let vars = List.sort_uniq (fun a b -> if (a = b) then 0 else if (a < b) then -1 else 1) vars
+            List.fold_left (fun f v -> 
+                            try
+                                let _ = Hashtbl.find v env
+                                in f
+                            with
+                            | Not_found -> 
+                                match (lookup_global v llm) with
+                                | Some x -> f
+                                | None -> v :: f) [] vars
+        in
+        List.fold_left (fun vs s -> (aux s) @ vs) [] stmts
+    in
+    let extract_env decls =
+        let env:(string, bool) Hashtbl.t = Hashtbl.create (List.length stmts) in
+        let _ = List.iter (fun d -> 
+                            match d with
+                            | VarDecl(_, declList) ->
+                                List.iter (fun ADeclarator(name, _) -> Hashtbl.add env name true) declList
+                            | _ -> ()
+                ) decls
+        in
+        env
+    in
+    let aux e d =
+        match d with
+        | FunDef (_, _, _, decls, stmts) -> 
+            let deeperDeps = get_extra_params decls in
+            let env = extract_env decls in
+            let extraDepsSelf = extract_deps stmts env in
+            deeperDeps @ extraDepsSelf @ e
+        | _ -> e
+    in
+    let paramList = List.fold_left aux [] decls in
+    paramList
+
+and get_vars stmt =
+    let get_expr_vars expr = 
+        (match expr with
+        | EId name -> [name]
+        | EExpr e -> get_expr_vars e
+        | EFCall (_, exprList) ->
+            List.fold_left get_expr_vars [] exprList
+        | EArray (aExpr, ArrExp idxExpr) ->
+            (get_expr_vars aExpr) @ (get_expr_vars idxExpr)
+        | EUnary(_, uExpr) ->
+            get_expr_vars uExpr
+        | EBinOp (_, opand1, opand2) ->
+            (get_expr_vars opand1) @ (get_expr_vars opand2)
+        | EUnAssign (_, _, e) ->
+            get_expr_vars e
+        | EBinAssign (_, e1, e2) ->
+            (get_expr_vars e1) @ (get_expr_vars e2)
+        | EConditional (exprCondition, exprTrue, exprFalse) -> 
+            (get_expr_vars exprCondition) @ (get_expr_vars exprTrue) @ (get_expr_vars exprFalse)
+        | ENewP (_, newExprOption) ->
+            (match newExprOption with
+             | Some (Some (ArrExp exp), None) -> get_expr_vars exp
+             | None -> []
+            )
+        | EDelete exp -> get_expr_vars exp
+        | ECast (_, exp) -> get_expr_vars exp
+        | _ -> []
+        )
+    in
+    match stmt with
+    | SExpr e -> get_expr_vars e
+    | SBlock stmts -> List.fold_left (fun vs s -> (get_vars s) @ vs) [] stmts
+    | SIf (condExpr, stmt) -> (get_expr_vars condExpr) @ get_vars stmt
+    | SIfElse (condExpr, stmt1, stmt2) -> (get_expr_vars condExpr) @ (get_vars stmt1) @ (get_vars stmt2)
+    | SFor (_ , initialization, condition, afterthought, stmt) -> 
+        (get_expr_vars initialization) @ (get_expr_vars condition) @ (get_expr_vars afterthought) @ (get_vars stmt)
+    | SReturn exprOption ->
+        (match exprOption with
+         | None -> []
+         | Some e -> get_expr_vars e
+        )
+    | _ -> []
+    *)
+and is_ref name env =
+    let refName = "_ref" ^ name in
+    try
+        let a = Hashtbl.find env refName in
+        true
+    with
+    | Not_found -> false
 
 let code_gen ast =
     match ast with
