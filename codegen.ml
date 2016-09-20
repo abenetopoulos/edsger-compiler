@@ -815,7 +815,7 @@ and get_extra_params decls =
         in
         List.fold_left (fun vs s -> (aux s) @ vs) [] stmts
     in
-    let extract_env decls =
+    let extract_env decls = (*returns all the variable declarations of the current function. anything not in this that is subsequently used is an external dependency*)
         let env:(string, bool) Hashtbl.t = Hashtbl.create (List.length stmts) in
         let _ = List.iter (fun d -> 
                             match d with
@@ -881,13 +881,6 @@ and get_vars stmt =
         )
     | _ -> []
     *)
-and is_ref name env =
-    let refName = "_ref" ^ name in
-    try
-        let a = Hashtbl.find env refName in
-        true
-    with
-    | Not_found -> false
 
 let code_gen ast =
     match ast with
