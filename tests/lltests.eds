@@ -4,22 +4,29 @@ double globalDouble;
 
 int test(int x) {
     int a;
-    a = 0;
-    a = x--;
-    
+
+    void testInside(bool someVal) {
+        int x;
+        void testInsideTest(int someInt) {
+            int f;
+            x = 10;
+            a = 10;
+        }   
+
+        a = 41;
+        testInsideTest(10);
+    }
+
+    a = 42;
+    testInside(false);
     return a;
 }
 
 void main() {
     int a;
-    bool b;
-    bool c;
     int i;
-    a = 42;
-    b = true;
+    a = 17;
 
-    for (; ;) {
-        a++;
-    }
+    i = test(a);
 }
 

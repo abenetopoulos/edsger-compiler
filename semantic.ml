@@ -300,7 +300,10 @@ and check_expr expr =
             in
             let length = List.length validEntries in
             if (length = 0) then
-               raise (Terminate "No function definition matches this function call") 
+                (
+                List.iter (fun x -> Printf.printf "%s\n" x) ids;
+                raise (Terminate "No function definition matches this function call") 
+                )
             else if (length > 1) then
                raise (Terminate "Ambiguous call to function. Can't resolve") 
             else
@@ -325,7 +328,7 @@ and check_expr expr =
                 (typeExpr, Some RVal) (*NOTE(achilles) : in the style of C *)
     | EBinAssign (binAssOp, expr1, expr2) ->
             let (type1, persistence1) = check_expr expr1 in
-            if (persistence1 = Some RVal) then raise (Terminate "Expression is not assignable")
+            if (persistence1 = Some RVal || type1 = TYPE_none) then raise (Terminate "Expression is not assignable")
             else
                 let (type2, persistence2) = check_expr expr2 in
                 (
@@ -342,6 +345,7 @@ and check_expr expr =
                                     (type1, Some RVal)
                                 else
                                     raise (Terminate "Assigning to incompatible pointer type")
+                        | TYPE_none -> (TYPE_none, None)
                         | _ -> raise (Terminate "Invalid operands to assignment expression")
                         )
                     else raise (Terminate "Invalid operands to assignment expression")

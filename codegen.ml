@@ -1,5 +1,5 @@
 (*TODO:
-  - implement nested functions...
+  - ENull does not generate correct code
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
@@ -27,7 +27,31 @@ let double_type = x86fp80_type llctx
 let bool_type = i1_type llctx
 let non_type = void_type llctx
 
+let extraArgs:(string, llvalue array) Hashtbl.t = Hashtbl.create 100
+
 type scope_type = SGlobal | SInternal
+
+let sort_and_remove_dups l =
+    let sort_func a b = 
+        if (a = b) then 0
+        else if (a < b) then -1
+        else 1
+    in
+    let rec aux lastElement l acc = 
+        match l with
+        | [] -> List.rev acc
+        | h :: t -> 
+            if h = lastElement then
+                aux lastElement t acc
+            else
+                aux h t (h::acc)
+    in
+    let sorted = List.sort sort_func l in
+    match sorted with
+    | [] -> []
+    | _ -> 
+        let h = List.hd sorted in
+        aux h (List.tl sorted) [h]
 
 let rec generate_code node scope envOpt bldr =
     match node with
@@ -101,18 +125,21 @@ let rec generate_code node scope envOpt bldr =
     | FunDef(OType(bType, pointerCnt), name, paramOption, decls, stmts) ->
         let llType = get_llvm_type bType pointerCnt in
         let nameArray, baseParamArray = make_param_array paramOption in
-        let paramArray = baseParamArray in
-        (*
-        let paramArray = 
-            if scope = SGlobal then baseParamArray
-            else
-                let extraParamOption = get_extra_params decls in
-                (match extraParamOption with
-                 | None -> paramArray
-                 | Some ePs -> Array.concat paramArray ePs
-                )
+        let env, extraNames, extraValues, extraTypes = 
+            (match envOpt with
+             | None -> 
+                let e:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
+                e, [||], [||], [||]
+             | Some e -> 
+                let newEnv:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
+                let n, v, t = generate_triple e bldr in
+                newEnv, n, v, t
+            )
         in
-        *)
+        (*let extraNames, extraValues, extraTypes = generate_triple env in*)
+        let nameArray = Array.append nameArray extraNames in
+        let paramArray = Array.append baseParamArray extraTypes in
+        (*let paramArray = baseParamArray in*)
         let fType = function_type llType paramArray in
         (*
         let paramString = 
@@ -129,15 +156,8 @@ let rec generate_code node scope envOpt bldr =
         *)
         let id = name in
         let func = define_function id fType llm in
+        let _ = Hashtbl.add extraArgs id extraValues in
         let _ = position_at_end (entry_block func) bldr in
-        let env = 
-            (match envOpt with
-             | None -> 
-                let e:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
-                e
-             | Some e -> Hashtbl.copy e
-            )
-        in
         let labels:(string, llbasicblock) Hashtbl.t = Hashtbl.create (List.length stmts) in (*no label sharing across units*)
         let _ = 
             Array.iteri (fun i a ->
@@ -305,7 +325,7 @@ and codegen_expr expr env bldr =
         let stringConst = define_global ".str" stringConstInit llm in 
         let constZero = const_int int_type 0 in
         build_gep stringConst [|constZero; constZero|] "tmp_str" bldr
-    | ENull -> const_null int_type  (*NOTE: type is irrelevant to us*)
+    | ENull -> const_null (pointer_type int_type)  (*NOTE: type is irrelevant to us*)
     | EFCall (fName, exprList) ->
         (match lookup_function fName llm with
          | None -> raise (Terminate "Function couldn't be found?")
@@ -314,9 +334,18 @@ and codegen_expr expr env bldr =
             let args = 
                 (match exprList with 
                  | None -> [||]
-                 (*| Some eList -> Array.of_list (List.map (fun e -> codegen_expr e env bldr) eList)*)
-                 | Some eList -> Array.of_list (process_args eList (param_types fType) env bldr)
+                 | Some eList -> (*Array.of_list (process_args eList (param_types fType) env bldr)*)
+                    let subArray = Array.sub (param_types fType) 0 (List.length eList) in
+                    Array.of_list (process_args eList subArray env bldr)
                 )
+            in
+            let args =
+                if (Array.length (param_types fType) > Array.length args) then begin
+                    let extraVals = Hashtbl.find extraArgs fName in
+                    Array.append args extraVals
+                end
+                else
+                    args
             in
             let str = 
                 if (return_type fType = non_type) then
@@ -409,7 +438,8 @@ and codegen_expr expr env bldr =
             let llVal1 = 
             (match opand1 with
              | EId _
-             | EArray _ -> build_load llVal1 "tmp_load" bldr
+             | EArray _
+             | EUnary(UnaryDeref, _) -> build_load llVal1 "tmp_load" bldr
              | _ -> llVal1
             )
             in
@@ -417,7 +447,8 @@ and codegen_expr expr env bldr =
             let llVal2 = 
             (match opand2 with
              | EId _
-             | EArray _ -> build_load llVal2 "tmp_load" bldr
+             | EArray _ 
+             | EUnary(UnaryDeref, _) -> build_load llVal2 "tmp_load" bldr
              | _ -> llVal2
             )
             in
@@ -484,7 +515,7 @@ and codegen_expr expr env bldr =
         (match opLocation with
          | LocRight -> llValExprLoad 
          | LocLeft -> modifiedLLValExpr
-        ) (*NOTE: most likely wrong. will crash and burn. avoid at all costs*)
+        )
     | EBinAssign (binAssOp, expr1, expr2) -> 
         let llVal1 = codegen_expr expr1 env bldr in
         let llVal2 = codegen_expr expr2 env bldr in
@@ -797,90 +828,28 @@ and codegen_conditional_expr condExpr  trueBBOption falseBBOption env bldr = (* 
     | _ as expr ->
         aux expr trueBBOption falseBBOption
 
-        (*
-and get_extra_params decls =
-    let extract_deps stmts env =
-        let aux s =
-            let vars = get_vars s in
-            let vars = List.sort_uniq (fun a b -> if (a = b) then 0 else if (a < b) then -1 else 1) vars
-            List.fold_left (fun f v -> 
-                            try
-                                let _ = Hashtbl.find v env
-                                in f
-                            with
-                            | Not_found -> 
-                                match (lookup_global v llm) with
-                                | Some x -> f
-                                | None -> v :: f) [] vars
-        in
-        List.fold_left (fun vs s -> (aux s) @ vs) [] stmts
+and generate_triple env bldr = 
+    let auxTbl:(string, llvalue * lltype) Hashtbl.t = Hashtbl.create (Hashtbl.length env) in
+    let aux k v =
+        if ((String.length k) > 4 && String.sub k 0 4 = "_ref") then
+            let valueToKeep = build_load v "tmp_load" bldr in
+            Hashtbl.add auxTbl k (valueToKeep, type_of valueToKeep)
+            (*(k::a, valueToKeep :: b, (type_of valueToKeep) :: c)*)
+        else begin
+            try
+                let _ = Hashtbl.find auxTbl ("_ref" ^ k) in
+                let _ = Hashtbl.remove auxTbl ("_ref" ^ k) in
+                Printf.printf "will remove a previous entry\n";
+                Hashtbl.add auxTbl ("_ref" ^ k) (v, type_of v)
+            with
+            | Not_found -> 
+                Hashtbl.add auxTbl ("_ref" ^ k) (v, type_of v)
+            (*(("_ref" ^ k) :: a, v :: b, (type_of v) :: c)*)
+        end
     in
-    let extract_env decls = (*returns all the variable declarations of the current function. anything not in this that is subsequently used is an external dependency*)
-        let env:(string, bool) Hashtbl.t = Hashtbl.create (List.length stmts) in
-        let _ = List.iter (fun d -> 
-                            match d with
-                            | VarDecl(_, declList) ->
-                                List.iter (fun ADeclarator(name, _) -> Hashtbl.add env name true) declList
-                            | _ -> ()
-                ) decls
-        in
-        env
-    in
-    let aux e d =
-        match d with
-        | FunDef (_, _, _, decls, stmts) -> 
-            let deeperDeps = get_extra_params decls in
-            let env = extract_env decls in
-            let extraDepsSelf = extract_deps stmts env in
-            deeperDeps @ extraDepsSelf @ e
-        | _ -> e
-    in
-    let paramList = List.fold_left aux [] decls in
-    paramList
-
-and get_vars stmt =
-    let get_expr_vars expr = 
-        (match expr with
-        | EId name -> [name]
-        | EExpr e -> get_expr_vars e
-        | EFCall (_, exprList) ->
-            List.fold_left get_expr_vars [] exprList
-        | EArray (aExpr, ArrExp idxExpr) ->
-            (get_expr_vars aExpr) @ (get_expr_vars idxExpr)
-        | EUnary(_, uExpr) ->
-            get_expr_vars uExpr
-        | EBinOp (_, opand1, opand2) ->
-            (get_expr_vars opand1) @ (get_expr_vars opand2)
-        | EUnAssign (_, _, e) ->
-            get_expr_vars e
-        | EBinAssign (_, e1, e2) ->
-            (get_expr_vars e1) @ (get_expr_vars e2)
-        | EConditional (exprCondition, exprTrue, exprFalse) -> 
-            (get_expr_vars exprCondition) @ (get_expr_vars exprTrue) @ (get_expr_vars exprFalse)
-        | ENewP (_, newExprOption) ->
-            (match newExprOption with
-             | Some (Some (ArrExp exp), None) -> get_expr_vars exp
-             | None -> []
-            )
-        | EDelete exp -> get_expr_vars exp
-        | ECast (_, exp) -> get_expr_vars exp
-        | _ -> []
-        )
-    in
-    match stmt with
-    | SExpr e -> get_expr_vars e
-    | SBlock stmts -> List.fold_left (fun vs s -> (get_vars s) @ vs) [] stmts
-    | SIf (condExpr, stmt) -> (get_expr_vars condExpr) @ get_vars stmt
-    | SIfElse (condExpr, stmt1, stmt2) -> (get_expr_vars condExpr) @ (get_vars stmt1) @ (get_vars stmt2)
-    | SFor (_ , initialization, condition, afterthought, stmt) -> 
-        (get_expr_vars initialization) @ (get_expr_vars condition) @ (get_expr_vars afterthought) @ (get_vars stmt)
-    | SReturn exprOption ->
-        (match exprOption with
-         | None -> []
-         | Some e -> get_expr_vars e
-        )
-    | _ -> []
-    *)
+    let _ = Hashtbl.iter aux env in 
+    let a,b,c = Hashtbl.fold (fun k (v, t) (a, b, c) -> (k :: a, v :: b, t :: c)) auxTbl ([],[],[]) in
+    (Array.of_list (List.rev a), Array.of_list (List.rev b), Array.of_list (List.rev c))
 
 let code_gen ast =
     match ast with
@@ -891,4 +860,4 @@ let code_gen ast =
             let _ = List.iter (fun x -> generate_code x SGlobal None bldr) tree in
             llm
         with
-        | _ -> Printf.printf "fuck\n"; dump_module llm; exit 1
+        | _ as e -> Printf.printf "\x1b[31mException\x1b[0m: %s\n" (Printexc.to_string e); dump_module llm; exit 1
