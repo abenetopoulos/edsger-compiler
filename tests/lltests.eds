@@ -5,28 +5,32 @@ double globalDouble;
 int test(int x) {
     int a;
 
-    void testInside(bool someVal) {
-        int x;
-        void testInsideTest(int someInt) {
-            int f;
-            x = 10;
-            a = 10;
-        }   
-
-        a = 41;
-        testInsideTest(10);
+    void testFunc() {
+        void someFunc(int a) {
+            int x;
+            x = a + 42;
+        }
     }
 
     a = 42;
-    testInside(false);
+    testFunc();
     return a;
 }
 
 void main() {
     int a;
     int i;
-    a = 17;
 
+    void testFunc() {
+        void someFunc(int a) {
+            int x;
+            x = a + 17;
+        }
+    }
+
+    a = 17;
+    testFunc();
+    //someFunc(a);
     i = test(a);
 }
 
