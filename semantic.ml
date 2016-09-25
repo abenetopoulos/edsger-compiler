@@ -1,11 +1,5 @@
 (*TODO: 
-   - check that labels in SBreak/SReturn/SContinue exist. Do stuff with labels in SFor
-   - during binary assignment, we currently allow the following:
-        int *pint;
-        int *anotherPint;
-        anotherPint = &pint;   
-     this should not be allowed without a cast
-
+    - check that labels in SBreak/SReturn/SContinue exist. Do stuff with labels in SFor [some weeks later, "stuff with labels" is not helpful...]
 *)
 
 open Ast
@@ -333,15 +327,15 @@ and check_expr expr =
                 let (type2, persistence2) = check_expr expr2 in
                 (
                 match type1 with
-                | TYPE_pointer (basicType, _) ->
+                | TYPE_pointer (basicType, cnt1) ->
                     if (binAssOp = BinAssignPlus || binAssOp = BinAssignMinus) then
                         if (equalType type2 TYPE_int) then (type1, Some RVal)
                         else raise (Terminate "Invalid operands to assignment expression")
                     else if (binAssOp = BinAssign) then
                         (
                         match type2 with
-                        | TYPE_pointer (rightBasicType, _) ->
-                                if (equalType basicType rightBasicType) then
+                        | TYPE_pointer (rightBasicType, cnt2) ->
+                                if (equalType basicType rightBasicType && cnt1 == cnt2) then
                                     (type1, Some RVal)
                                 else
                                     raise (Terminate "Assigning to incompatible pointer type")
@@ -437,22 +431,27 @@ and check_expr expr =
             match binOp with
             | BinComma -> (op_res_type BinComma type2, exprPersistence)
             | BinPlus | BinMinus ->
+                (
+                match type1 with
+                | TYPE_pointer _ ->
+                    if (equalType type2 TYPE_int) then (type1, Some RVal)
+                    else raise (Terminate "Invalid operands to binary operator")
+                | _ -> 
                     (
-                    match type1 with
-                    | TYPE_pointer _ ->
-                        if (equalType type2 TYPE_int) then (type1, Some RVal)
+                    match type2 with
+                    | TYPE_pointer _ -> 
+                        if (equalType type1 TYPE_int) then (type2, Some RVal)
                         else raise (Terminate "Invalid operands to binary operator")
                     | _ -> 
-                            (
-                            match type2 with
-                            | TYPE_pointer _ -> 
-                                if (equalType type1 TYPE_int) then (type2, Some RVal)
-                                else raise (Terminate "Invalid operands to binary operator")
-                            | _ -> 
-                                if (equalType type1 type2) then (type1 , Some RVal)
-                                else raise (Terminate "Operands of binary operation must be of same type")
-                            )
+                        if (equalType type1 type2) then (type1 , Some RVal)
+                        else raise (Terminate "Operands of binary operation must be of same type")
                     )
+                )
+            | BinAnd | BinOr ->
+                if (equalType type1 type2) && (equalType type1 TYPE_bool) then
+                    (TYPE_bool, Some RVal)
+                else
+                    raise (Terminate "Operands to binary and/or should be of type bool")
             | _ ->
                 if (equalType type1 type2) then (op_res_type binOp type1, Some RVal)
                 else raise (Terminate "Operands of binary operation must be of same type")

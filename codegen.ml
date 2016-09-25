@@ -1,5 +1,5 @@
 (*TODO:
-  - ENull does not generate correct code
+  - fix function name clashing
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
@@ -297,13 +297,22 @@ and codegen_stmt stmt env labels bldr =
         ignore (match exprOption with
          | None -> build_ret_void bldr
          | Some expr ->
-            let llValExpr = codegen_expr expr env bldr in
             (match expr with
-             | EId _ 
-             | EArray _ -> 
-                let llValRet = build_load llValExpr "tmp_load" bldr in
-                build_ret llValRet bldr
-             | _ -> build_ret llValExpr bldr
+             | ENull ->
+                let currentBB = insertion_block bldr in
+                let func = block_parent currentBB in
+                let retType = return_type (element_type (type_of func)) in
+                let nullExpr = const_null retType in
+                build_ret nullExpr bldr
+             | _ as e ->
+                let llValExpr = codegen_expr expr env bldr in
+                (match expr with
+                 | EId _ 
+                 | EArray _ -> 
+                    let llValRet = build_load llValExpr "tmp_load" bldr in
+                    build_ret llValRet bldr
+                 | _ -> build_ret llValExpr bldr
+                )
             )
         )
     | _ -> ()
@@ -325,7 +334,7 @@ and codegen_expr expr env bldr =
         let stringConst = define_global ".str" stringConstInit llm in 
         let constZero = const_int int_type 0 in
         build_gep stringConst [|constZero; constZero|] "tmp_str" bldr
-    | ENull -> const_null (pointer_type int_type)  (*NOTE: type is irrelevant to us*)
+    | ENull -> const_null (pointer_type int_type)  (*NOTE: this is just a dummy, caller generates actual value with correct type*)
     | EFCall (fName, exprList) ->
         (match lookup_function fName llm with
          | None -> raise (Terminate "Function couldn't be found?")
@@ -444,12 +453,26 @@ and codegen_expr expr env bldr =
             )
             in
             let llVal2 = codegen_expr opand2 env bldr in
-            let llVal2 = 
+            let llVal1, llVal2 = 
             (match opand2 with
+             | ENull -> 
+               (match opand1 with
+                | ENull -> const_null (pointer_type int_type), const_null (pointer_type int_type)
+                | _ -> llVal1, const_null (type_of llVal1)
+               )
              | EId _
              | EArray _ 
-             | EUnary(UnaryDeref, _) -> build_load llVal2 "tmp_load" bldr
-             | _ -> llVal2
+             | EUnary(UnaryDeref, _) -> 
+                let l2 = build_load llVal2 "tmp_load" bldr in
+                (match opand1 with
+                 | ENull -> const_null (type_of l2), l2
+                 | _ -> llVal1, l2
+                )
+             | _ -> 
+                (match opand1 with
+                 | ENull -> const_null (type_of llVal2), llVal2
+                 | _ -> llVal1, llVal2
+                )
             )
             in
             let build_fun, llVal2, strng =
@@ -523,6 +546,7 @@ and codegen_expr expr env bldr =
             (match binAssOp with
             | BinAssign -> 
                 (match expr2 with
+                 | ENull -> const_null (element_type (type_of llVal1))
                  | EId _
                  | EArray _ 
                  | EUnary(UnaryDeref, _) -> build_load llVal2 "tmp_load" bldr
@@ -744,6 +768,7 @@ and codegen_conditional_expr condExpr  trueBBOption falseBBOption env bldr = (* 
         let exprLLVal = codegen_expr e env bldr in
         let exprLLVal = 
             (match e with
+             | ENull -> const_int bool_type 0
              | EId _
              | EArray _ -> 
                 let loadedLLVal = build_load exprLLVal "tmp_load" bldr in
@@ -839,7 +864,6 @@ and generate_triple env bldr =
             try
                 let _ = Hashtbl.find auxTbl ("_ref" ^ k) in
                 let _ = Hashtbl.remove auxTbl ("_ref" ^ k) in
-                Printf.printf "will remove a previous entry\n";
                 Hashtbl.add auxTbl ("_ref" ^ k) (v, type_of v)
             with
             | Not_found -> 
