@@ -1,4 +1,5 @@
 (*TODO:
+  - recursive calls don't pass implicit arguments correctly (see hanoi example)
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
@@ -117,13 +118,14 @@ let rec generate_code node scope envOpt parentFuncStrList bldr =
                 Hashtbl.add env vName llval
                 ) additionalllTypeOptions
     | FunDecl (OType(bType, pointerCnt), name, paramOption) ->
-        (*
-        let llType = get_llvm_type bType pointerCnt in
-        let _, paramArray = make_param_array paramOption in
-        let fType = function_type llType paramArray in
-        ignore (declare_function name fType llm)
-        *)
-        () (*NOTE: function declarations seem inconsequential in llvm ir *)
+        if (scope = SGlobal) then begin
+            let llType = get_llvm_type bType pointerCnt in
+            let _, paramArray = make_param_array paramOption in
+            let fType = function_type llType paramArray in
+            ignore (declare_function name fType llm)
+        end
+        else
+            ()
     | FunDef(OType(bType, pointerCnt), name, paramOption, decls, stmts) ->
         let llType = get_llvm_type bType pointerCnt in
         let nameArray, baseParamArray = make_param_array paramOption in
