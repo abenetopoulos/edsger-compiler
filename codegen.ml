@@ -1,5 +1,4 @@
 (*TODO:
-  - recursive calls don't pass implicit arguments correctly (see hanoi example)
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
@@ -27,7 +26,8 @@ let double_type = x86fp80_type llctx
 let bool_type = i1_type llctx
 let non_type = void_type llctx
 
-let extraArgs:(string, llvalue array) Hashtbl.t = Hashtbl.create 100
+(*let extraArgs:(string, llvalue array) Hashtbl.t = Hashtbl.create 100*)
+let extraArgs:(string, string array) Hashtbl.t = Hashtbl.create 100
 
 type scope_type = SGlobal | SInternal
 
@@ -136,7 +136,7 @@ let rec generate_code node scope envOpt parentFuncStrList bldr =
                 e, [||], [||], [||]
              | Some e -> 
                 let newEnv:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
-                let n, v, t = generate_triple e bldr in
+                let n, v, t = generate_triple e (string_of_list parentFuncStrList) bldr in
                 newEnv, n, v, t
             )
         in
@@ -164,7 +164,8 @@ let rec generate_code node scope envOpt parentFuncStrList bldr =
         in
         let func = define_function id fType llm in
         let newFuncStrList = name :: parentFuncStrList in
-        let _ = Hashtbl.add extraArgs id extraValues in
+        (*let _ = Hashtbl.add extraArgs id extraValues in*)
+        let _ = Hashtbl.add extraArgs id extraNames in
         let _ = position_at_end (entry_block func) bldr in
         let labels:(string, llbasicblock) Hashtbl.t = Hashtbl.create (List.length stmts) in (*no label sharing across units*)
         let _ = 
@@ -345,17 +346,17 @@ and codegen_expr expr env parentFuncStrList bldr =
     | ENull -> const_null (pointer_type int_type)  (*NOTE: this is just a dummy, caller generates actual value with correct type*)
     | EFCall (fName, exprList) ->
         let rec aux l =
-            let name = 
+            let name, lNames = 
             (match l with
-            | [] -> fName
-            | _ as lN -> "_" ^ (string_of_list lN) ^ fName
+            | [] -> fName, []
+            | _ as lN -> "_" ^ (string_of_list lN) ^ fName, lN
             )
             in
             (match lookup_function name llm with
              | None -> 
                 if (l = []) then raise (Terminate "Function couldn't be found")
                 else aux (List.tl l)
-            | Some funLLValue ->
+             | Some funLLValue ->
                 let fType = element_type (type_of funLLValue) in
                 let args = 
                 (match exprList with 
@@ -367,7 +368,50 @@ and codegen_expr expr env parentFuncStrList bldr =
                 in
                 let args =
                 if (Array.length (param_types fType) > Array.length args) then begin
-                    let extraVals = Hashtbl.find extraArgs name in
+                    let extraVals = 
+                        let extraNames = Hashtbl.find extraArgs name in
+                        let locate_val_in_env n =
+                            try
+                                Hashtbl.find env n
+                            with
+                            | Not_found ->
+                                let cutoff = String.index_from n 1 '_' in
+                                let baseName = String.sub n (cutoff + 4) (String.length n - (cutoff + 4)) in
+                                try
+                                    Hashtbl.find env baseName
+                                with
+                                | Not_found -> 
+                                    Printf.printf "tried to locate %s, %d\n" baseName cutoff;
+                                    raise (Terminate "Couldn't locate external dependency for call")
+                        in
+                        Array.map locate_val_in_env extraNames
+                        (*let caller = (block_parent (insertion_block bldr)) in
+                        let callerName = value_name caller in
+                        if ((string_of_list lNames) = callerName) then
+                            Hashtbl.find extraArgs name 
+                        else begin
+                            let simpleParams = Hashtbl.find extraArgs name in
+                            Array.map (fun p ->
+                                        let paramName = value_name p in
+                                        if ((String.length paramName) > 4 && (String.sub paramName 0 4 = "_ref")) then
+                                            p
+                                        else begin
+                                            set_value_name ("_ref" ^ paramName) p;
+                                            p
+                                        end) simpleParams
+                        end*)
+                        (*if callerName = name then begin
+                            let callerParams = params caller in
+                            let len = Array.length args in
+                            let extra = Array.sub callerParams (len) (Array.length callerParams - len) in
+                            (*Printf.printf "%d - %d\n" (Array.length callerParams) (Array.length extra);
+                            Array.iter (fun s -> Printf.printf "%s\n" (value_name s)) callerParams;
+                            Array.iter (fun s -> Printf.printf "%s\n" (value_name s)) extra;*)
+                            extra
+                            (*exit 1;*)
+                        end
+                        else *)
+                    in
                     Array.append args extraVals
                 end
                 else
@@ -872,13 +916,12 @@ and codegen_conditional_expr condExpr trueBBOption falseBBOption env parentFuncS
     | _ as expr ->
         aux expr trueBBOption falseBBOption
 
-and generate_triple env bldr = 
+and generate_triple env scopeString bldr = 
     let auxTbl:(string, llvalue * lltype) Hashtbl.t = Hashtbl.create (Hashtbl.length env) in
     let aux k v =
-        if ((String.length k) > 4 && String.sub k 0 4 = "_ref") then
+        if ((String.length k) > 4 && (String.sub k 0 4 = "_ref" || (String.sub k 0 4 <> "_ref" && k.[0] = '_'))) then (*NOTE: this check looks like shit, will probably perform like shit*)
             let valueToKeep = build_load v "tmp_load" bldr in
             Hashtbl.add auxTbl k (valueToKeep, type_of valueToKeep)
-            (*(k::a, valueToKeep :: b, (type_of valueToKeep) :: c)*)
         else begin
             try
                 let _ = Hashtbl.find auxTbl ("_ref" ^ k) in
@@ -886,8 +929,7 @@ and generate_triple env bldr =
                 Hashtbl.add auxTbl ("_ref" ^ k) (v, type_of v)
             with
             | Not_found -> 
-                Hashtbl.add auxTbl ("_ref" ^ k) (v, type_of v)
-            (*(("_ref" ^ k) :: a, v :: b, (type_of v) :: c)*)
+                Hashtbl.add auxTbl ("_" ^ scopeString ^ "_ref" ^ k) (v, type_of v)
         end
     in
     let _ = Hashtbl.iter aux env in 

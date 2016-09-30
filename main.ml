@@ -2,9 +2,7 @@
     - write dump_assembly
     - write usage string
     - make command line arg parsing better
-    - check each sys call's return value
 *)
-
 
 open Lexer
 open Format
@@ -43,6 +41,7 @@ let dump_assembly fName =
 
 let () =
     let readFromStd, writeLLToStd, writeAsmToStd, optimize, name = get_args () in
+    let doNotCompile = true in
     let cin,fname =
         if not readFromStd then(
             Printf.printf "Filename: %s\n" name;
@@ -56,12 +55,12 @@ let () =
         check_ast !astTree;
         let llm = code_gen !astTree in
         (match (verify_module llm) with
-         | None -> Printf.printf "Module is correct\n"
+         | None -> Printf.printf "DEBUG: Module is correct\n"
          | Some e ->
-            Printf.printf "Invalid module: %s\n" e
+            Printf.printf "DEBUG: Invalid module: %s\n" e
         );
 
-        Printf.printf "will find name\n";
+        Printf.printf "DEBUG: will find name\n";
         let baseName = 
             if (name = "") then ".temp"
             else
@@ -69,7 +68,7 @@ let () =
                 String.sub fname 0 dotI
         in
         let outName = baseName ^ ".ll" in
-        Printf.printf "Will write ir to: %s\n" outName;
+        Printf.printf "DEBUG: Will write ir to: %s\n" outName;
         if (writeLLToStd) then
             dump_module llm
         else
@@ -81,8 +80,14 @@ let () =
             if optimize then "-O=2"
             else ""
         in
-        let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in
-        Sys.command llcCommand;
+        (*let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in*)
+        let llcCommand = Printf.sprintf "/Volumes/Files/Developer/bin/llc %s -filetype=asm %s" optString outName in
+        if (Sys.command llcCommand <> 0) then begin
+            Printf.printf "DEBUB: llc could not compile our program\n"; exit 1
+        end
+        else
+            ()
+        ;
 
         let asmName = baseName ^ ".s" in
         if (writeAsmToStd) then
@@ -91,13 +96,23 @@ let () =
             ()
         ;
 
-        let binName = 
-            if (baseName = ".temp") then "a.out"
+        if (doNotCompile = false) then begin 
+            let binName = 
+                if (baseName = ".temp") then "a.out"
             else baseName
-        in
-        let libName = "~/Developer/univ/compiler/lib/linux/lib.a" in
-        let clangCommand = Printf.sprintf "clang-3.5 %s %s -o %s" asmName libName binName in
-        Sys.command clangCommand;
+            in
+            let libName = "~/Developer/univ/compiler/lib/linux/lib.a" in
+            let clangCommand = Printf.sprintf "clang-3.5 %s %s -o %s" asmName libName binName in
+            if (Sys.command clangCommand <> 0) then begin
+                Printf.printf "DEBUG: Clang could not compile to binary\n"; exit 1
+            end
+            else
+                ()
+            ;
+        end
+        else
+            ()
+        ;
         
         exit 0
      with

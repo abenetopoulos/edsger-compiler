@@ -5,15 +5,19 @@ double globalDouble;
 int test(int x) {
     int a;
 
-    void testFunc() {
-        void someFunc(int a) {
-            int x;
-            x = a + 42;
+    void someFunc(int a) {
+        int x;
+        
+        int someOtherFunc(bool b) {
+            return -1; 
         }
+
+        someOtherFunc(true);
+        x = a + 42;
     }
 
     a = 42;
-    testFunc();
+    someFunc(a);
     return a;
 }
 
@@ -29,8 +33,8 @@ void main() {
     }
 
     a = 17;
-    testFunc();
+    //testFunc();
     //someFunc(a);
-    i = test(a);
+    //i = test(a);
 }
 
