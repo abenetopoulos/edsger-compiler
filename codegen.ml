@@ -56,7 +56,7 @@ let sort_and_remove_dups l =
 let string_of_list l = 
     List.fold_left (fun acc s -> s ^ acc) "" l
 
-let rec generate_code node scope envOpt parentFuncStrList bldr =
+let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
     match node with
     | VarDecl (OType(bType, pointerCnt), declList) ->
         let basellType = get_llvm_type bType pointerCnt in
@@ -129,7 +129,7 @@ let rec generate_code node scope envOpt parentFuncStrList bldr =
     | FunDef(OType(bType, pointerCnt), name, paramOption, decls, stmts) ->
         let llType = get_llvm_type bType pointerCnt in
         let nameArray, baseParamArray = make_param_array paramOption in
-        let env, extraNames, extraValues, extraTypes = 
+        (*let env, extraNames, extraValues, extraTypes = 
             (match envOpt with
              | None -> 
                 let e:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
@@ -138,6 +138,13 @@ let rec generate_code node scope envOpt parentFuncStrList bldr =
                 let newEnv:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
                 let n, v, t = generate_triple e (string_of_list parentFuncStrList) bldr in
                 newEnv, n, v, t
+            )
+        in*)
+        let env:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
+        let extraNames, extraValues, extraTypes = 
+            (match tripleOpt with
+             | None -> [||], [||], [||]
+             | Some (n, v, t) -> n, v, t
             )
         in
         (*let extraNames, extraValues, extraTypes = generate_triple env in*)
@@ -158,14 +165,21 @@ let rec generate_code node scope envOpt parentFuncStrList bldr =
         in
         let id = "_" ^ parentFuncName ^ name ^ "_" ^ paramString in
         *)
+        let parentFuncStr = (string_of_list parentFuncStrList) in
         let id = 
             if scope = SGlobal then name
-            else "_" ^ (string_of_list parentFuncStrList) ^ name 
+            else "_" ^ parentFuncStr ^ name 
+        in
+        let _ = 
+            (match (lookup_function id llm) with
+             | Some f -> delete_function f
+             | None -> ()
+            )
         in
         let func = define_function id fType llm in
         let newFuncStrList = name :: parentFuncStrList in
         (*let _ = Hashtbl.add extraArgs id extraValues in*)
-        let _ = Hashtbl.add extraArgs id extraNames in
+        (*let _ = Hashtbl.add extraArgs id extraNames in*)
         let _ = position_at_end (entry_block func) bldr in
         let labels:(string, llbasicblock) Hashtbl.t = Hashtbl.create (List.length stmts) in (*no label sharing across units*)
         let _ = 
@@ -177,10 +191,24 @@ let rec generate_code node scope envOpt parentFuncStrList bldr =
                 let storedLL = build_store a llStack bldr in
                 Hashtbl.add env n llStack) (params func)
         in
-        let _ = List.iter (fun d -> 
+        (*let _ = List.iter (fun d -> 
                                 let insBlock = insertion_block bldr in 
                                 generate_code d SInternal (Some env) newFuncStrList bldr;
-                                position_at_end insBlock bldr) decls in
+                                position_at_end insBlock bldr) decls in*)
+        let funcDefList = List.fold_left (fun acc d -> 
+                                    match d with
+                                    | FunDef _ as fd -> fd :: acc
+                                    | _ as d -> 
+                                        let insBlock = insertion_block bldr in 
+                                        generate_code d SInternal (Some env) newFuncStrList None bldr;
+                                        position_at_end insBlock bldr;
+                                        acc) [] decls in
+        let triple = generate_triple env (string_of_list newFuncStrList) bldr in
+        let _ = generate_func_declarations funcDefList (string_of_list newFuncStrList) triple (*bldr*) in
+        let _ = List.iter (fun d ->
+                                let insBlock = insertion_block bldr in
+                                generate_code d SInternal (Some env) newFuncStrList (Some triple) bldr;
+                                position_at_end insBlock bldr) (List.rev funcDefList) in
         let _ = List.iter (fun d -> codegen_stmt d env labels newFuncStrList bldr) stmts in
         if (llType = non_type) then
             ignore (build_ret_void bldr)
@@ -372,7 +400,8 @@ and codegen_expr expr env parentFuncStrList bldr =
                         let extraNames = Hashtbl.find extraArgs name in
                         let locate_val_in_env n =
                             try
-                                Hashtbl.find env n
+                                let res = Hashtbl.find env n in
+                                build_load res "tmp_ref_load" bldr
                             with
                             | Not_found ->
                                 let cutoff = String.index_from n 1 '_' in
@@ -385,32 +414,6 @@ and codegen_expr expr env parentFuncStrList bldr =
                                     raise (Terminate "Couldn't locate external dependency for call")
                         in
                         Array.map locate_val_in_env extraNames
-                        (*let caller = (block_parent (insertion_block bldr)) in
-                        let callerName = value_name caller in
-                        if ((string_of_list lNames) = callerName) then
-                            Hashtbl.find extraArgs name 
-                        else begin
-                            let simpleParams = Hashtbl.find extraArgs name in
-                            Array.map (fun p ->
-                                        let paramName = value_name p in
-                                        if ((String.length paramName) > 4 && (String.sub paramName 0 4 = "_ref")) then
-                                            p
-                                        else begin
-                                            set_value_name ("_ref" ^ paramName) p;
-                                            p
-                                        end) simpleParams
-                        end*)
-                        (*if callerName = name then begin
-                            let callerParams = params caller in
-                            let len = Array.length args in
-                            let extra = Array.sub callerParams (len) (Array.length callerParams - len) in
-                            (*Printf.printf "%d - %d\n" (Array.length callerParams) (Array.length extra);
-                            Array.iter (fun s -> Printf.printf "%s\n" (value_name s)) callerParams;
-                            Array.iter (fun s -> Printf.printf "%s\n" (value_name s)) extra;*)
-                            extra
-                            (*exit 1;*)
-                        end
-                        else *)
                     in
                     Array.append args extraVals
                 end
@@ -422,8 +425,9 @@ and codegen_expr expr env parentFuncStrList bldr =
                         ""
                     else
                         "tmp_call"
-                in
+                in (
                 build_call funLLValue args str bldr
+                )
             )
         in
         aux parentFuncStrList
@@ -920,8 +924,9 @@ and generate_triple env scopeString bldr =
     let auxTbl:(string, llvalue * lltype) Hashtbl.t = Hashtbl.create (Hashtbl.length env) in
     let aux k v =
         if ((String.length k) > 4 && (String.sub k 0 4 = "_ref" || (String.sub k 0 4 <> "_ref" && k.[0] = '_'))) then (*NOTE: this check looks like shit, will probably perform like shit*)
-            let valueToKeep = build_load v "tmp_load" bldr in
-            Hashtbl.add auxTbl k (valueToKeep, type_of valueToKeep)
+            (*let valueToKeep = build_load v "tmp_load" bldr in*)
+            let valueToKeep = v in
+            Hashtbl.add auxTbl k (valueToKeep, element_type (type_of valueToKeep))
         else begin
             try
                 let _ = Hashtbl.find auxTbl ("_ref" ^ k) in
@@ -936,13 +941,36 @@ and generate_triple env scopeString bldr =
     let a,b,c = Hashtbl.fold (fun k (v, t) (a, b, c) -> (k :: a, v :: b, t :: c)) auxTbl ([],[],[]) in
     (Array.of_list (List.rev a), Array.of_list (List.rev b), Array.of_list (List.rev c))
 
+and generate_func_declarations fdefs parentFuncStr triple = 
+    let extraNames, extraTypes = 
+        match triple with
+        | n, _, t -> n, t
+        | _ -> raise (Terminate "why did this go to shit?\n")
+    in
+    let idPrefix = "_" ^ parentFuncStr in
+    let aux d = 
+        match d with
+        | FunDef(OType(bType, pointerCnt), name, paramOption, _, _) ->
+           let llType = get_llvm_type bType pointerCnt in
+           let _, baseParamArray = make_param_array paramOption in
+           let paramArray = Array.append baseParamArray extraTypes in
+           let fType = function_type llType paramArray in
+           let id = idPrefix ^ name in
+           begin
+           ignore (declare_function id fType llm);
+           Hashtbl.add extraArgs id extraNames
+           end
+        | _ -> raise (Terminate "There is a non function in generate_func_declarations\n")
+    in
+    List.iter (fun d -> aux d) fdefs
+
 let code_gen ast =
     match ast with
     | [] -> raise (Terminate "AST is empty")
     | _ as tree ->
         try
             let bldr = builder llctx in
-            let _ = List.iter (fun x -> generate_code x SGlobal None [""] bldr) tree in
+            let _ = List.iter (fun x -> generate_code x SGlobal None [""] None bldr) tree in
             llm
         with
         | _ as e -> Printf.printf "\x1b[31mException\x1b[0m: %s\n" (Printexc.to_string e); dump_module llm; exit 1

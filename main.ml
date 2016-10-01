@@ -34,14 +34,28 @@ let get_args () =
         !readStd, !writeLLStd, !writeAsmStd, !opt, name
     end
     else
-        (Printf.printf "<ADD USAGE STRING>\n"; exit 1)
+        let usageString = "edsgerc: A compiler for the Edsger language written in OCaml\n\n" ^
+                           "Usage: edsgerc [options] [input_file]\n" ^
+                           "Options:\n" ^
+                           "  -O\tOptimize generated code (equivalent to -O2 in gcc)\n" ^
+                           "  -i\tRead program from console, output assembly to console\n" ^
+                           "  -f\tRead program from console, output LLVM ir to console\n\n" ^
+                           "If neither -i nor -f are used, the user should provide a .eds file containing the source code to be compiled\n"
+        in
+        (Printf.eprintf "%s" usageString; exit 1)
 
 let dump_assembly fName = 
-    () (*TODO: implement simple printing*)
+    let asmChannel = open_in fName in
+    try
+        while true; do
+            Printf.printf "%s\n" (input_line asmChannel)
+        done
+    with
+    | End_of_file -> close_in asmChannel
 
 let () =
     let readFromStd, writeLLToStd, writeAsmToStd, optimize, name = get_args () in
-    let doNotCompile = true in
+    let doNotCompile = false in
     let cin,fname =
         if not readFromStd then(
             Printf.printf "Filename: %s\n" name;
@@ -80,13 +94,13 @@ let () =
             if optimize then "-O=2"
             else ""
         in
-        (*let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in*)
-        let llcCommand = Printf.sprintf "/Volumes/Files/Developer/bin/llc %s -filetype=asm %s" optString outName in
+        let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in
+        (*let llcCommand = Printf.sprintf "/Volumes/Files/Developer/bin/llc %s -filetype=asm %s" optString outName in*)
         if (Sys.command llcCommand <> 0) then begin
             Printf.printf "DEBUB: llc could not compile our program\n"; exit 1
         end
         else
-            ()
+            Printf.printf "DEBUB: llc compiled our program\n"
         ;
 
         let asmName = baseName ^ ".s" in
@@ -99,7 +113,7 @@ let () =
         if (doNotCompile = false) then begin 
             let binName = 
                 if (baseName = ".temp") then "a.out"
-            else baseName
+                else baseName
             in
             let libName = "~/Developer/univ/compiler/lib/linux/lib.a" in
             let clangCommand = Printf.sprintf "clang-3.5 %s %s -o %s" asmName libName binName in
@@ -107,7 +121,7 @@ let () =
                 Printf.printf "DEBUG: Clang could not compile to binary\n"; exit 1
             end
             else
-                ()
+                Printf.printf "DEBUB: Clang compiled our program\n"
             ;
         end
         else
