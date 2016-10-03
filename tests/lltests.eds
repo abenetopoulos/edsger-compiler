@@ -2,6 +2,7 @@
 
 double globalDouble;
 
+/*
 int test(int x) {
     int a;
 
@@ -33,10 +34,24 @@ int test(int x) {
     anotherFunc(42.1);
     return a;
 }
+*/
+
+int testOuter(int a) {
+    int x;
+
+    if (a > 17)
+        return -1;
+    else
+        return -2;
+
+    x = a + 100;
+    return x;
+}
 
 void main() {
     int a;
     int i;
+    int j;
 
     void testFunc() {
         void someFunc(int a) {
@@ -46,8 +61,16 @@ void main() {
     }
 
     a = 17;
-    testFunc();
+    //testFunc();
     //someFunc(a);
-    i = test(a);
+    //i = test(a);
+    someLabel: for (i = 0; i < 10; i++) {
+        a++;
+        anotherLabel: for (j = 0; j < 42; j++) {
+            a *= 2;
+            if ( a % 2 == 0)
+                break anotherLabel;
+        }
+    }
 }
 

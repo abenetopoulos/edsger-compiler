@@ -7,10 +7,6 @@
   - changed what unary deref returns, might cause issues, keep in mind [6/9/16]
  * *)
 
-(*NOTE: Things which won't work:
-   - anything involving labels
- * *)
-
 open Llvm
 open Ast
 
@@ -30,6 +26,9 @@ let non_type = void_type llctx
 let extraArgs:(string, string array) Hashtbl.t = Hashtbl.create 100
 
 type scope_type = SGlobal | SInternal
+type branchInstr = ReturnBranch of llbasicblock 
+                 | BreakBranch of llbasicblock * (string option) 
+                 | ContinueBranch of llbasicblock * (string option)
 
 let sort_and_remove_dups l =
     let sort_func a b = 
@@ -152,19 +151,6 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
         let paramArray = Array.append baseParamArray extraTypes in
         (*let paramArray = baseParamArray in*)
         let fType = function_type llType paramArray in
-        (*
-        let paramString = 
-            match paramOption with
-            | None -> "N"
-            | Some params -> get_param_string params
-        in
-        let parentFuncName =
-            match parentOpt with
-            | None -> ""
-            | Some pN -> pN ^ "_"
-        in
-        let id = "_" ^ parentFuncName ^ name ^ "_" ^ paramString in
-        *)
         let parentFuncStr = (string_of_list parentFuncStrList) in
         let id = 
             if scope = SGlobal then name
@@ -172,7 +158,7 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
         in
         let _ = 
             (match (lookup_function id llm) with
-             | Some f -> delete_function f
+             | Some f -> delete_function f (*NOTE: this whole thing is a stinking hack*)
              | None -> ()
             )
         in
@@ -195,6 +181,10 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
                                 let insBlock = insertion_block bldr in 
                                 generate_code d SInternal (Some env) newFuncStrList bldr;
                                 position_at_end insBlock bldr) decls in*)
+        let decls = 
+            if (llType = non_type) then decls
+            else VarDecl(OType(bType, pointerCnt), [ADeclarator("_retVal", None)]) :: decls 
+        in
         let funcDefList = List.fold_left (fun acc d -> 
                                     match d with
                                     | FunDef _ as fd -> fd :: acc
@@ -209,45 +199,131 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
                                 let insBlock = insertion_block bldr in
                                 generate_code d SInternal (Some env) newFuncStrList (Some triple) bldr;
                                 position_at_end insBlock bldr) (List.rev funcDefList) in
-        let _ = List.iter (fun d -> codegen_stmt d env labels newFuncStrList bldr) stmts in
-        if (llType = non_type) then
-            ignore (build_ret_void bldr)
-        else
-            ()
+        (*let _ = List.iter (fun d -> codegen_stmt d env labels newFuncStrList bldr) stmts in*)
+        let basicBlocksInNeedOfABranchTarget = List.fold_left (fun acc d -> 
+                                                                    let stuff = codegen_stmt d env labels newFuncStrList bldr
+                                                                    in stuff @ acc) [] stmts in
+        if basicBlocksInNeedOfABranchTarget = [] then begin
+            (*if (llType = non_type) then*)
+                ignore (build_ret_void bldr)
+            (*else
+                let retLLVal = locate_llval env "_retVal" bldr in
+                let retLLVal = build_load retLLVal "ret_load" bldr in
+                ignore (build_ret retLLVal bldr)*)
+        end
+        else begin
+            if (List.length basicBlocksInNeedOfABranchTarget > 1) then
+                let currentBB = insertion_block bldr in
+                let parentFunction = block_parent currentBB in
+                let returnBB = append_block llctx "func_return" parentFunction in
+                position_at_end returnBB bldr;
+                let retLLVal = locate_llval env "_retVal" bldr in
+                let retLLVal = build_load retLLVal "ret_load" bldr in
+                ignore (build_ret retLLVal bldr);
+
+                List.iter (fun d ->
+                    match d with
+                    | ReturnBranch bb ->
+                        position_at_end bb bldr;
+                        ignore (build_br returnBB bldr)
+                    | _ -> raise (Terminate "Only ReturnBrances should have been in this list")
+                ) basicBlocksInNeedOfABranchTarget
+            else
+                let retLLVal = locate_llval env "_retVal" bldr in
+                let retLLVal = build_load retLLVal "ret_load" bldr in
+                ignore (build_ret retLLVal bldr);
+        end
         
 and codegen_stmt stmt env labels parentFuncStrList bldr = 
     match stmt with
-    | SExpr expr -> ignore (codegen_expr expr env parentFuncStrList bldr)
-    | SBlock stmts -> ignore (List.hd (List.rev (List.map (fun d -> codegen_stmt d env labels parentFuncStrList bldr) stmts)))
+    | SExpr expr -> ignore (codegen_expr expr env parentFuncStrList bldr); []
+    | SBlock stmts -> (*ignore (List.hd (List.rev *)
+        let aux acc d = 
+            let bbOption = codegen_stmt d env labels parentFuncStrList bldr in
+            (match bbOption with
+             | [] -> acc
+             | [a] -> a :: acc
+             | _ as l -> l @ acc
+             (*| _ -> raise *)
+            )
+        in
+        List.rev (List.fold_left aux [] stmts)
+        (*List.map (fun d -> codegen_stmt d env labels parentFuncStrList (*loopAfterthoughtOpt loopMergeOpt*) bldr) stmts)*)
     | SIf (condExpr, stmt) ->
         (*let thenBB, _, mergeBB = codegen_conditional_expr condExpr false None None env bldr in*)
         let thenBB, mergeBB = codegen_conditional_expr condExpr None None env parentFuncStrList bldr in
         position_at_end thenBB bldr;
 
-        ignore (codegen_stmt stmt env labels parentFuncStrList bldr);
+        (*ignore (codegen_stmt stmt env labels parentFuncStrList loopAfterthoughtOpt loopMergeOpt bldr);*)
+        let possibleBlocks = codegen_stmt stmt env labels parentFuncStrList bldr in
         let newThenBB = insertion_block bldr in
         position_at_end newThenBB bldr;
-        ignore (build_br mergeBB bldr);
+        let ourBB =  
+            List.filter (fun d ->
+                match d with
+                | ContinueBranch (bb, _)
+                | BreakBranch (bb, _)
+                | ReturnBranch bb -> bb = newThenBB) possibleBlocks
+        in
+        if (ourBB = []) then
+            ignore (build_br mergeBB bldr)
+        else
+            ()
+        ;
         position_at_end mergeBB bldr;
+        possibleBlocks
     | SIfElse (condExpr, stmt1, stmt2) -> 
         (*let thenBB, elseBBOpt, mergeBB = codegen_conditional_expr condExpr true None None env bldr in*)
         let thenBB,elseBB = codegen_conditional_expr condExpr None None env parentFuncStrList bldr in
         position_at_end thenBB bldr;
 
-        ignore (codegen_stmt stmt1 env labels parentFuncStrList bldr);
+        (*ignore (codegen_stmt stmt1 env labels parentFuncStrList bldr);*)
+        let truePossibleBlocks = codegen_stmt stmt1 env labels parentFuncStrList bldr in
         let newThenBB = insertion_block bldr in
+        position_at_end newThenBB bldr;
+        let trueBB =  
+            List.filter (fun d ->
+                match d with
+                | ContinueBranch (bb, _)
+                | BreakBranch (bb, _)
+                | ReturnBranch bb -> bb = newThenBB) truePossibleBlocks
+        in
+        ()
+        ;
+        (*if (ourBB = []) then
+            ignore (build_br mergeBB bldr)
+        else
+            ()
+        ;*)
+
+        (*let newThenBB = insertion_block bldr in*)
         let parentFunction = block_parent newThenBB in
         position_at_end elseBB bldr;
 
-        ignore (codegen_stmt stmt2 env labels parentFuncStrList bldr);
-
+        (*ignore (codegen_stmt stmt2 env labels parentFuncStrList loopAfterthoughtOpt loopMergeOpt bldr)*)
+        let falsePossibleBlocks = codegen_stmt stmt2 env labels parentFuncStrList bldr in
         let newElseBB = insertion_block bldr in
+        let falseBB =
+            List.filter (fun d ->
+                match d with
+                | ContinueBranch (bb, _)
+                | BreakBranch (bb, _)
+                | ReturnBranch bb -> bb = newElseBB) falsePossibleBlocks
+        in
         let mergeBB = append_block llctx "merge" parentFunction in
-        position_at_end newThenBB bldr;
-        ignore (build_br mergeBB bldr);
-        position_at_end newElseBB bldr;
-        ignore(build_br mergeBB bldr);
+        if (trueBB = []) then (
+            position_at_end newThenBB bldr;
+            ignore (build_br mergeBB bldr);
+        )else
+            ();
+        
+        if (falseBB = []) then (
+            position_at_end newElseBB bldr;
+            ignore(build_br mergeBB bldr);
+        )else
+            ();
         position_at_end mergeBB bldr;
+        truePossibleBlocks @ falsePossibleBlocks
     | SFor (labelOption, initialization, condition, afterthought, stmt) -> (*this case now [15/9] seems a little toxic...*)
         (match initialization with
          | None -> ()
@@ -272,30 +348,10 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
             Some res
         ) in
         let bodyBB = insertion_block bldr in
-        let thenBB = append_block llctx "body" parentFunction in
+        let thenBB = append_block llctx "loop_body" parentFunction in
+        let afterthoughtBB = append_block llctx "loop_afterthought" parentFunction in
+        let mergeBB = append_block llctx "loop_merge" parentFunction in
         position_at_end thenBB bldr;
-
-        ignore (codegen_stmt stmt env labels parentFuncStrList bldr);
-
-        let afterthoughtBB = append_block llctx "tmp_afterthought" parentFunction in
-        position_at_end afterthoughtBB bldr;
-        (match afterthought with
-         | None -> ()
-         | Some a -> 
-            ignore (codegen_expr a env parentFuncStrList bldr);
-        );
-        ignore (build_br loopBB bldr);
-
-        position_at_end thenBB bldr;
-        ignore (build_br afterthoughtBB bldr);
-        let mergeBB = append_block llctx "merge" parentFunction in
-        position_at_end loopBB bldr;
-        (match conditionLLVal with
-         | None -> ignore (build_br thenBB bldr)
-         | Some c -> ignore (build_cond_br c thenBB mergeBB bldr);
-        );
-        position_at_end mergeBB bldr;
-
         (match labelOption with
          | None -> ()
          | Some labelStrn ->
@@ -305,54 +361,144 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
                 Hashtbl.add labels continueStrn afterthoughtBB;
                 Hashtbl.add labels breakStrn mergeBB
             end
-        )
+        );
+
+        (*ignore (codegen_stmt stmt env labels parentFuncStrList (*(Some afterthoughtBB) (Some mergeBB)*) bldr);*)
+        let possibleBlocks = codegen_stmt stmt env labels parentFuncStrList bldr in
+        let newThenBB = insertion_block bldr in
+        position_at_end afterthoughtBB bldr;
+
+        (match afterthought with
+         | None -> ()
+         | Some a -> 
+            ignore (codegen_expr a env parentFuncStrList bldr);
+        );
+        ignore (build_br loopBB bldr);
+
+        position_at_end newThenBB bldr;
+        let ourBB =  
+            List.filter (fun d ->
+                match d with
+                | ContinueBranch (bb, _)
+                | BreakBranch (bb, _)
+                | ReturnBranch bb -> bb = newThenBB) possibleBlocks
+        in
+        if (ourBB = []) then
+            ignore (build_br afterthoughtBB bldr)
+        else
+            ()
+        ;
+ 
+        (*ignore (build_br afterthoughtBB bldr);*)
+        position_at_end loopBB bldr;
+        (match conditionLLVal with
+         | None -> ignore (build_br thenBB bldr)
+         | Some c -> ignore (build_cond_br c thenBB mergeBB bldr);
+        );
+        position_at_end mergeBB bldr;
+
+        let restOfBlocks = 
+            List.fold_left (fun acc d ->
+                match d with
+                | BreakBranch (breakBB, labelOpt) ->
+                    position_at_end breakBB bldr;
+                    (match labelOpt with
+                     | None -> ignore (build_br mergeBB bldr)
+                     | Some str ->
+                        let targetBB = Hashtbl.find labels (str ^ "Break") in
+                        ignore (build_br targetBB bldr)
+                    );
+                    acc
+                | ContinueBranch (continueBB, labelOpt) ->
+                    position_at_end continueBB bldr;
+                    (match labelOpt with
+                     | None -> ignore (build_br afterthoughtBB bldr)
+                     | Some str ->
+                        let targetBB = Hashtbl.find labels (str ^ "Continue") in
+                        ignore (build_br targetBB bldr)
+                    );
+                    acc
+                | _ as br -> br :: acc
+            ) [] possibleBlocks
+        in
+        let _ = position_at_end mergeBB bldr in
+        restOfBlocks
     | SContinue labelOption ->
-        (match labelOption with
+        let currentBlock = insertion_block bldr in
+        [ContinueBranch (currentBlock, labelOption)]
+        (*(match labelOption with
          | Some labelStrn ->
-            let targetLLVal = Hashtbl.find labels (labelStrn ^ "Cont") in
-            ignore (build_br targetLLVal bldr)
+            (*let targetLLVal = Hashtbl.find labels (labelStrn ^ "Cont") in
+            let _ = (build_br targetLLVal bldr) in*)
+            []
          | None ->
-            let currentBB = insertion_block bldr in 
+            let currentBlock = insertion_block bldr in
+            [ContinueBranch (currentBlock, None)]
+            (*
+            (match loopAfterthoughtOpt with
+             | Some aBB -> ignore (build_br aBB bldr)
+             | None -> raise (Terminate "an afterthought bb should have been specified\n")
+            )*)
+            (*let currentBB = insertion_block bldr in 
             (match (block_pred currentBB) with
              | After prev -> ignore (build_br prev bldr)
              | _ -> raise (Terminate "this is wrong")
-            )
+            )*)
          )
+        *)
     | SBreak labelOption ->
-        (match labelOption with
+        let currentBlock = insertion_block bldr in
+        [BreakBranch (currentBlock, labelOption)]
+        (*(match labelOption with
          | Some labelStrn ->
+            let _ = Printf.printf "will locate label '%s'\n" labelStrn in
             let targetLLVal = Hashtbl.find labels (labelStrn ^ "Break") in
-            ignore (build_br targetLLVal bldr)
+            let _ = (build_br targetLLVal bldr) in
+            []
          | None ->
-            let currentBB = insertion_block bldr in 
+            let currentBlock = insertion_block bldr in
+            [BreakBranch currentBlock]
+            (*
+            (match loopMergeOpt with
+             | Some mBB -> ignore (build_br mBB bldr)
+             | None -> raise (Terminate "a merge bb should have been specified\n")
+            )*)
+            (*let currentBB = insertion_block bldr in 
             (match (block_succ currentBB) with
              | Before next -> ignore (build_br next bldr)
-             | _ -> raise (Terminate "this is wrong")
-            )
+             | _ -> raise (Terminate "break this is wrong")
+            )*)
          )
+        *)
     | SReturn exprOption ->
-        ignore (match exprOption with
-         | None -> build_ret_void bldr
-         | Some expr ->
-            (match expr with
-             | ENull ->
-                let currentBB = insertion_block bldr in
-                let func = block_parent currentBB in
-                let retType = return_type (element_type (type_of func)) in
-                let nullExpr = const_null retType in
-                build_ret nullExpr bldr
-             | _ as e ->
-                let llValExpr = codegen_expr expr env parentFuncStrList bldr in
+        let _ = 
+            (match exprOption with
+             | None -> build_ret_void bldr
+             | Some expr ->
+                let retLLVal = locate_llval env "_retVal" bldr in
                 (match expr with
-                 | EId _ 
-                 | EArray _ -> 
-                    let llValRet = build_load llValExpr "tmp_load" bldr in
-                    build_ret llValRet bldr
-                 | _ -> build_ret llValExpr bldr
+                 | ENull ->
+                    let currentBB = insertion_block bldr in
+                    let func = block_parent currentBB in
+                    let retType = return_type (element_type (type_of func)) in
+                    let nullExpr = const_null retType in
+                    build_store nullExpr retLLVal bldr
+                 | _ as e ->
+                    let llValExpr = codegen_expr expr env parentFuncStrList bldr in
+                    let llValRet =
+                        (match expr with
+                         | EId _ 
+                         | EArray _ -> build_load llValExpr "tmp_load" bldr
+                         | _ -> llValExpr
+                        )
+                    in
+                    build_store llValRet retLLVal bldr
                 )
             )
-        )
-    | _ -> ()
+        in
+        let currentBlock = insertion_block bldr in
+        [ReturnBranch currentBlock]
+    | _ -> []
 
 and codegen_expr expr env parentFuncStrList bldr =  
     match expr with
@@ -820,7 +966,6 @@ and make_param_array paramOption =
                     xName, get_llvm_type bType pointerCnt
             | ParamByRef (xType, xName) ->
                     let OType(bType, pointerCnt) = xType in
-                    (*xName, get_llvm_type bType (pointerCnt + 1)*)
                     ("_ref" ^ xName), get_llvm_type bType (pointerCnt + 1)
         )
         in

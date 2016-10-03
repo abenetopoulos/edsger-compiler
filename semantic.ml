@@ -199,38 +199,42 @@ and check_stmt stmt inLoop retType =
     match stmt with
     | SSemicolon -> ()
     | SExpr expr -> let _ = check_expr expr in ()
-    | SBlock stmts -> List.iter (fun stmt -> check_stmt stmt false retType) stmts
+    | SBlock stmts -> List.iter (fun stmt -> check_stmt stmt inLoop retType) stmts
     | SIf (expr, stmt) -> 
             let (exprType, _) = check_expr expr in
             if (equalType exprType TYPE_bool) then 
-                check_stmt stmt false retType
+                check_stmt stmt inLoop retType
             else raise (Terminate "Condition must be of type bool")
     | SIfElse (expr, stmt1, stmt2) ->
             let (exprType, _) = check_expr expr in
             if (equalType exprType TYPE_bool) then 
             begin
-                check_stmt stmt1 false retType;
-                check_stmt stmt2 false retType
+                check_stmt stmt1 inLoop retType;
+                check_stmt stmt2 inLoop retType
             end
             else raise (Terminate "Condition must be of type bool")
     | SFor (labelOption, initialization, condition, afterthought, stmt) ->
-            let _ = (match initialization with
-            | None -> ()
-            | Some exp -> let _ = check_expr exp in ()
-            ) in ();
-            let _ = (match condition with
-            | None -> ()
-            | Some exp -> 
+            let _ = 
+                (match initialization with
+                 | None -> ()
+                 | Some exp -> let _ = check_expr exp in ()
+                ) 
+            in ();
+            let _ = 
+                (match condition with
+                 | None -> ()
+                 | Some exp -> 
                     let (condType, _) = check_expr exp 
                     in
                         if not (equalType condType TYPE_bool) then
                             raise (Terminate "Condition must be of type bool")
-            ) in ();
+                ) 
+            in ();
             let _ = (match afterthought with
             | None -> ()
             | Some exp -> let _ = check_expr exp in ()
             ) in ();
-            check_stmt stmt false retType
+            check_stmt stmt true retType
     | SContinue _ ->
             if (inLoop = false) then
                 raise (Terminate "'continue' statement must be inside loop")
