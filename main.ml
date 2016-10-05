@@ -1,6 +1,4 @@
 (*TODO:
-    - write dump_assembly
-    - write usage string
     - make command line arg parsing better
 *)
 
@@ -67,6 +65,7 @@ let () =
     try
         Parser.prog (Lexer.read (fname :: [])) lexbuf;
         check_ast !astTree;
+        (*print_ast !astTree;*)
         let llm = code_gen !astTree in
         (match (verify_module llm) with
          | None -> Printf.printf "DEBUG: Module is correct\n"
@@ -116,7 +115,7 @@ let () =
                 else baseName
             in
             let libName = "~/Developer/univ/compiler/lib/linux/lib.a" in
-            let clangCommand = Printf.sprintf "clang-3.5 %s %s -o %s" asmName libName binName in
+            let clangCommand = Printf.sprintf "clang-3.5 -g %s %s -o %s" asmName libName binName in
             if (Sys.command clangCommand <> 0) then begin
                 Printf.printf "DEBUG: Clang could not compile to binary\n"; exit 1
             end

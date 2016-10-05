@@ -184,6 +184,7 @@ expression:
     | expression; array_exp                                                { EArray ($1, $2) } 
     | unary_op; expression                                                 { EUnary ($1, $2) }         %prec AMBER
     | expression; lower_binary_op; expression                              { EBinOp ($2, $1, $3) }     %prec EQUALITIES
+    | expression; binary_comma_op; expression                              { EBinOp ($2, $1, $3) }     %prec COMMA
     | expression; pm_binary_op; expression                                 { EBinOp ($2, $1, $3) }     %prec PLUS
     | expression; mdm_binary_op; expression                                { EBinOp ($2, $1, $3) }     %prec MULTI
     | unary_assign; expression                                             { EUnAssign ($1, LocLeft, $2) }     %prec PLUSPLUS_PRE
@@ -259,8 +260,11 @@ lower_binary_op:
     | NOTEQ                                                                { BinNotEq }
     | AND                                                                  { BinAnd }
     | OR                                                                   { BinOr }
-    | COMMA                                                                { BinComma }
+    (*| COMMA                                                                { BinComma }*)
     ;
+
+binary_comma_op:
+    | COMMA                                                                { BinComma }
 
 unary_assign:
     | PLUSPLUS                                                             { UnaryPlusPlus }

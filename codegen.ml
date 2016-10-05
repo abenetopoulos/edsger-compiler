@@ -1,4 +1,6 @@
 (*TODO:
+  - when we pass an array as an argument, we should first do a gep, and then pass that as the argument for some moronic reason
+  - array accesses don't realy work?
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
@@ -55,7 +57,7 @@ let sort_and_remove_dups l =
 let string_of_list l = 
     List.fold_left (fun acc s -> s ^ acc) "" l
 
-let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
+let rec generate_code node scope envOpt arrayEnvOpt parentFuncStrList tripleOpt bldr =
     match node with
     | VarDecl (OType(bType, pointerCnt), declList) ->
         let basellType = get_llvm_type bType pointerCnt in
@@ -82,14 +84,22 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
                      | None -> raise (Terminate "An environment should have been specified at this point")
                     )
                     in
-                    let tempVal = codegen_expr expr env parentFuncStrList bldr in
-                    let finalVal = 
+                    let arrayEnv = 
+                    (match arrayEnvOpt with
+                     | Some e -> e
+                     | None -> raise (Terminate "An environment should have been specified at this point")
+                    )
+                    in
+                    let tempVal = codegen_expr expr env arrayEnv parentFuncStrList bldr in
+                    let intVal, finalVal = 
                     (match expr with
+                     (*| EInt integer -> integer, tempVal*)
                      | EId _
-                     | EArray _ -> build_load tempVal "tmp_load" bldr
-                     | _ -> tempVal
+                     | EArray _ -> -1, build_load tempVal "tmp_load" bldr
+                     | _ -> -1, tempVal
                     ) in
-                    -1, Some finalVal
+                    intVal, Some finalVal
+                    (*-1, Some finalVal*)
                 )
             ) in
             xName, constantInt, llValInt
@@ -108,13 +118,22 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
              | None -> raise (Terminate "An environment should have been specified at this point")
             )
             in
-            List.iter (fun (vName, _, additional) -> 
-                let llval = 
+            let arrayEnv = 
+                (match arrayEnvOpt with
+                 | Some e -> e
+                 | None -> raise (Terminate "An environment should have been specified at this point")
+                )
+            in
+            List.iter (fun (vName, intVal, additional) -> 
+                let llVal = 
                 match additional with 
                 | None -> (build_alloca basellType vName bldr)
-                | Some nItems -> (build_array_alloca basellType nItems vName bldr)
+                | Some nItems -> 
+                    let _ = Hashtbl.add arrayEnv vName true in
+                    (*(build_alloca (array_type basellType intVal) vName bldr)*)
+                    (build_array_alloca basellType nItems vName bldr)
                 in
-                Hashtbl.add env vName llval
+                Hashtbl.add env vName llVal
                 ) additionalllTypeOptions
     | FunDecl (OType(bType, pointerCnt), name, paramOption) ->
         if (scope = SGlobal) then begin
@@ -140,6 +159,7 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
             )
         in*)
         let env:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
+        let arrayEnv:(string, bool) Hashtbl.t = Hashtbl.create (List.length decls) in
         let extraNames, extraValues, extraTypes = 
             (match tripleOpt with
              | None -> [||], [||], [||]
@@ -190,27 +210,21 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
                                     | FunDef _ as fd -> fd :: acc
                                     | _ as d -> 
                                         let insBlock = insertion_block bldr in 
-                                        generate_code d SInternal (Some env) newFuncStrList None bldr;
+                                        generate_code d SInternal (Some env) (Some arrayEnv) newFuncStrList None bldr;
                                         position_at_end insBlock bldr;
                                         acc) [] decls in
         let triple = generate_triple env (string_of_list newFuncStrList) bldr in
         let _ = generate_func_declarations funcDefList (string_of_list newFuncStrList) triple (*bldr*) in
         let _ = List.iter (fun d ->
                                 let insBlock = insertion_block bldr in
-                                generate_code d SInternal (Some env) newFuncStrList (Some triple) bldr;
+                                generate_code d SInternal (Some env) (Some arrayEnv) newFuncStrList (Some triple) bldr;
                                 position_at_end insBlock bldr) (List.rev funcDefList) in
         (*let _ = List.iter (fun d -> codegen_stmt d env labels newFuncStrList bldr) stmts in*)
         let basicBlocksInNeedOfABranchTarget = List.fold_left (fun acc d -> 
-                                                                    let stuff = codegen_stmt d env labels newFuncStrList bldr
+                                                                    let stuff = codegen_stmt d env arrayEnv labels newFuncStrList bldr
                                                                     in stuff @ acc) [] stmts in
-        if basicBlocksInNeedOfABranchTarget = [] then begin
-            (*if (llType = non_type) then*)
-                ignore (build_ret_void bldr)
-            (*else
-                let retLLVal = locate_llval env "_retVal" bldr in
-                let retLLVal = build_load retLLVal "ret_load" bldr in
-                ignore (build_ret retLLVal bldr)*)
-        end
+        if basicBlocksInNeedOfABranchTarget = [] then
+            ignore (build_ret_void bldr)
         else begin
             if (List.length basicBlocksInNeedOfABranchTarget > 1) then
                 let currentBB = insertion_block bldr in
@@ -234,12 +248,12 @@ let rec generate_code node scope envOpt parentFuncStrList tripleOpt bldr =
                 ignore (build_ret retLLVal bldr);
         end
         
-and codegen_stmt stmt env labels parentFuncStrList bldr = 
+and codegen_stmt stmt env arrayEnv labels parentFuncStrList bldr = 
     match stmt with
-    | SExpr expr -> ignore (codegen_expr expr env parentFuncStrList bldr); []
+    | SExpr expr -> ignore (codegen_expr expr env arrayEnv parentFuncStrList bldr); []
     | SBlock stmts -> (*ignore (List.hd (List.rev *)
         let aux acc d = 
-            let bbOption = codegen_stmt d env labels parentFuncStrList bldr in
+            let bbOption = codegen_stmt d env arrayEnv labels parentFuncStrList bldr in
             (match bbOption with
              | [] -> acc
              | [a] -> a :: acc
@@ -251,11 +265,11 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
         (*List.map (fun d -> codegen_stmt d env labels parentFuncStrList (*loopAfterthoughtOpt loopMergeOpt*) bldr) stmts)*)
     | SIf (condExpr, stmt) ->
         (*let thenBB, _, mergeBB = codegen_conditional_expr condExpr false None None env bldr in*)
-        let thenBB, mergeBB = codegen_conditional_expr condExpr None None env parentFuncStrList bldr in
+        let thenBB, mergeBB = codegen_conditional_expr condExpr None None env arrayEnv parentFuncStrList bldr in
         position_at_end thenBB bldr;
 
         (*ignore (codegen_stmt stmt env labels parentFuncStrList loopAfterthoughtOpt loopMergeOpt bldr);*)
-        let possibleBlocks = codegen_stmt stmt env labels parentFuncStrList bldr in
+        let possibleBlocks = codegen_stmt stmt env arrayEnv labels parentFuncStrList bldr in
         let newThenBB = insertion_block bldr in
         position_at_end newThenBB bldr;
         let ourBB =  
@@ -274,11 +288,11 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
         possibleBlocks
     | SIfElse (condExpr, stmt1, stmt2) -> 
         (*let thenBB, elseBBOpt, mergeBB = codegen_conditional_expr condExpr true None None env bldr in*)
-        let thenBB,elseBB = codegen_conditional_expr condExpr None None env parentFuncStrList bldr in
+        let thenBB,elseBB = codegen_conditional_expr condExpr None None env arrayEnv parentFuncStrList bldr in
         position_at_end thenBB bldr;
 
         (*ignore (codegen_stmt stmt1 env labels parentFuncStrList bldr);*)
-        let truePossibleBlocks = codegen_stmt stmt1 env labels parentFuncStrList bldr in
+        let truePossibleBlocks = codegen_stmt stmt1 env arrayEnv labels parentFuncStrList bldr in
         let newThenBB = insertion_block bldr in
         position_at_end newThenBB bldr;
         let trueBB =  
@@ -290,18 +304,13 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
         in
         ()
         ;
-        (*if (ourBB = []) then
-            ignore (build_br mergeBB bldr)
-        else
-            ()
-        ;*)
 
         (*let newThenBB = insertion_block bldr in*)
         let parentFunction = block_parent newThenBB in
         position_at_end elseBB bldr;
 
         (*ignore (codegen_stmt stmt2 env labels parentFuncStrList loopAfterthoughtOpt loopMergeOpt bldr)*)
-        let falsePossibleBlocks = codegen_stmt stmt2 env labels parentFuncStrList bldr in
+        let falsePossibleBlocks = codegen_stmt stmt2 env arrayEnv labels parentFuncStrList bldr in
         let newElseBB = insertion_block bldr in
         let falseBB =
             List.filter (fun d ->
@@ -327,7 +336,7 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
     | SFor (labelOption, initialization, condition, afterthought, stmt) -> (*this case now [15/9] seems a little toxic...*)
         (match initialization with
          | None -> ()
-         | Some i -> ignore (codegen_expr i env parentFuncStrList bldr)
+         | Some i -> ignore (codegen_expr i env arrayEnv parentFuncStrList bldr)
         );
         let preheaderBB = insertion_block bldr in
         let parentFunction = block_parent preheaderBB in
@@ -339,7 +348,7 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
         (match condition with
          | None -> None
          | Some c ->
-            let conditionLLVal = codegen_expr c env parentFuncStrList bldr in
+            let conditionLLVal = codegen_expr c env arrayEnv parentFuncStrList bldr in
             let res = 
             (match c with
              | EId _ -> build_load conditionLLVal "tmp_load" bldr
@@ -364,14 +373,14 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
         );
 
         (*ignore (codegen_stmt stmt env labels parentFuncStrList (*(Some afterthoughtBB) (Some mergeBB)*) bldr);*)
-        let possibleBlocks = codegen_stmt stmt env labels parentFuncStrList bldr in
+        let possibleBlocks = codegen_stmt stmt env arrayEnv labels parentFuncStrList bldr in
         let newThenBB = insertion_block bldr in
         position_at_end afterthoughtBB bldr;
 
         (match afterthought with
          | None -> ()
          | Some a -> 
-            ignore (codegen_expr a env parentFuncStrList bldr);
+            ignore (codegen_expr a env arrayEnv parentFuncStrList bldr);
         );
         ignore (build_br loopBB bldr);
 
@@ -426,50 +435,9 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
     | SContinue labelOption ->
         let currentBlock = insertion_block bldr in
         [ContinueBranch (currentBlock, labelOption)]
-        (*(match labelOption with
-         | Some labelStrn ->
-            (*let targetLLVal = Hashtbl.find labels (labelStrn ^ "Cont") in
-            let _ = (build_br targetLLVal bldr) in*)
-            []
-         | None ->
-            let currentBlock = insertion_block bldr in
-            [ContinueBranch (currentBlock, None)]
-            (*
-            (match loopAfterthoughtOpt with
-             | Some aBB -> ignore (build_br aBB bldr)
-             | None -> raise (Terminate "an afterthought bb should have been specified\n")
-            )*)
-            (*let currentBB = insertion_block bldr in 
-            (match (block_pred currentBB) with
-             | After prev -> ignore (build_br prev bldr)
-             | _ -> raise (Terminate "this is wrong")
-            )*)
-         )
-        *)
     | SBreak labelOption ->
         let currentBlock = insertion_block bldr in
         [BreakBranch (currentBlock, labelOption)]
-        (*(match labelOption with
-         | Some labelStrn ->
-            let _ = Printf.printf "will locate label '%s'\n" labelStrn in
-            let targetLLVal = Hashtbl.find labels (labelStrn ^ "Break") in
-            let _ = (build_br targetLLVal bldr) in
-            []
-         | None ->
-            let currentBlock = insertion_block bldr in
-            [BreakBranch currentBlock]
-            (*
-            (match loopMergeOpt with
-             | Some mBB -> ignore (build_br mBB bldr)
-             | None -> raise (Terminate "a merge bb should have been specified\n")
-            )*)
-            (*let currentBB = insertion_block bldr in 
-            (match (block_succ currentBB) with
-             | Before next -> ignore (build_br next bldr)
-             | _ -> raise (Terminate "break this is wrong")
-            )*)
-         )
-        *)
     | SReturn exprOption ->
         let _ = 
             (match exprOption with
@@ -484,7 +452,7 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
                     let nullExpr = const_null retType in
                     build_store nullExpr retLLVal bldr
                  | _ as e ->
-                    let llValExpr = codegen_expr expr env parentFuncStrList bldr in
+                    let llValExpr = codegen_expr expr env arrayEnv parentFuncStrList bldr in
                     let llValRet =
                         (match expr with
                          | EId _ 
@@ -500,10 +468,10 @@ and codegen_stmt stmt env labels parentFuncStrList bldr =
         [ReturnBranch currentBlock]
     | _ -> []
 
-and codegen_expr expr env parentFuncStrList bldr =  
+and codegen_expr expr env arrayEnv parentFuncStrList bldr =  
     match expr with
     | EId name -> locate_llval env name bldr
-    | EExpr nExpr -> codegen_expr nExpr env parentFuncStrList bldr
+    | EExpr nExpr -> codegen_expr nExpr env arrayEnv parentFuncStrList bldr
     | EBool b -> 
             let x = if b = true then 1 else 0 in 
             const_int bool_type x
@@ -537,7 +505,7 @@ and codegen_expr expr env parentFuncStrList bldr =
                  | None -> [||]
                  | Some eList -> (*Array.of_list (process_args eList (param_types fType) env bldr)*)
                     let subArray = Array.sub (param_types fType) 0 (List.length eList) in
-                    Array.of_list (process_args eList subArray env parentFuncStrList bldr)
+                    Array.of_list (process_args eList subArray env arrayEnv parentFuncStrList bldr)
                 )
                 in
                 let args =
@@ -578,19 +546,19 @@ and codegen_expr expr env parentFuncStrList bldr =
         in
         aux parentFuncStrList
     | EArray (aExpr, ArrExp idxExpr) -> 
-        let exprLLV = codegen_expr aExpr env parentFuncStrList bldr in
+        let exprLLV = codegen_expr aExpr env arrayEnv parentFuncStrList bldr in
         let baseVal = exprLLV in (*aExpr is either an identifier or a function call? either way, we shouldn't load it I think*)
         let offset = 
-            let partial = codegen_expr idxExpr env parentFuncStrList bldr in
+            let partial = codegen_expr idxExpr env arrayEnv parentFuncStrList bldr in
             (match idxExpr with
              | EId _ | EArray _ -> build_load partial "tmp_load" bldr
              | _ -> partial
             ) 
         in
-        let gepExpr = build_gep baseVal [|offset|] "tmp_access" bldr in
+        let gepExpr = build_in_bounds_gep baseVal [|offset|] "tmp_access" bldr in
         gepExpr
     | EUnary (unaryOp, uExpr) ->
-        let exprLLVal = codegen_expr uExpr env parentFuncStrList bldr in
+        let exprLLVal = codegen_expr uExpr env arrayEnv parentFuncStrList bldr in
         let exprValType = type_of exprLLVal in
         let constZero = const_int int_type 0 in
         (match unaryOp with
@@ -622,7 +590,7 @@ and codegen_expr expr env parentFuncStrList bldr =
     | EBinOp (binOp, opand1, opand2) as binExpr ->
         (match binOp with
          | BinAnd ->
-            let trueBB, falseBB = codegen_conditional_expr binExpr None None env parentFuncStrList bldr in
+            let trueBB, falseBB = codegen_conditional_expr binExpr None None env arrayEnv parentFuncStrList bldr in
             let parentFunction = block_parent trueBB in
             let mergeBB = append_block llctx "merge" parentFunction in
             position_at_end falseBB bldr;
@@ -636,7 +604,7 @@ and codegen_expr expr env parentFuncStrList bldr =
             let constTrue = const_int bool_type 1 in
             build_phi [(constFalse, falseBB); (constTrue, trueBB)] "tmp_phi" bldr
          | BinOr ->
-            let trueBB, falseBB = codegen_conditional_expr binExpr None None env parentFuncStrList bldr in
+            let trueBB, falseBB = codegen_conditional_expr binExpr None None env arrayEnv parentFuncStrList bldr in
             let parentFunction = block_parent trueBB in
             let mergeBB = append_block llctx "merge" parentFunction in
             position_at_end falseBB bldr;
@@ -649,8 +617,12 @@ and codegen_expr expr env parentFuncStrList bldr =
             let constFalse = const_int bool_type 0 in
             let constTrue = const_int bool_type 1 in
             build_phi [(constFalse, falseBB); (constTrue, trueBB)] "tmp_phi" bldr
-         | _ as bop ->
+         (*| BinComma ->
             let llVal1 = codegen_expr opand1 env parentFuncStrList bldr in
+            let llVal2 = codegen_expr opand2 env parentFuncStrList bldr in
+            llVal2*)
+         | _ as bop ->
+            let llVal1 = codegen_expr opand1 env arrayEnv parentFuncStrList bldr in
             let llValType = 
             (match (classify_type (type_of llVal1)) with
              | Pointer -> element_type (type_of llVal1) 
@@ -665,7 +637,7 @@ and codegen_expr expr env parentFuncStrList bldr =
              | _ -> llVal1
             )
             in
-            let llVal2 = codegen_expr opand2 env parentFuncStrList bldr in
+            let llVal2 = codegen_expr opand2 env arrayEnv parentFuncStrList bldr in
             let llVal1, llVal2 = 
             (match opand2 with
              | ENull -> 
@@ -730,7 +702,7 @@ and codegen_expr expr env parentFuncStrList bldr =
              | BinNotEq -> 
                  if (llValType = int_type || llValType = bool_type || (size_of llValType) = (size_of (pointer_type int_type))) then build_icmp Icmp.Ne, llVal2, "tmp_noteq"
                  else build_fcmp Fcmp.One, llVal2, "tmp_noteq"
-                      | BinComma -> 
+             | BinComma -> 
                  build_or, llVal2, "" (*dummy func*)
              | _ -> raise (Terminate "well, this is quite the failure!\n")
             )
@@ -739,7 +711,7 @@ and codegen_expr expr env parentFuncStrList bldr =
             else llVal2
         )
     | EUnAssign (unAssOp, opLocation, expr) -> 
-        let llValExpr = codegen_expr expr env parentFuncStrList bldr in
+        let llValExpr = codegen_expr expr env arrayEnv parentFuncStrList bldr in
         let llValExprLoad = build_load llValExpr "tmp_load" bldr in
         let oneConst = const_int int_type 1 in
         let modifiedLLValExpr = 
@@ -753,8 +725,8 @@ and codegen_expr expr env parentFuncStrList bldr =
          | LocLeft -> modifiedLLValExpr
         )
     | EBinAssign (binAssOp, expr1, expr2) -> 
-        let llVal1 = codegen_expr expr1 env parentFuncStrList bldr in
-        let llVal2 = codegen_expr expr2 env parentFuncStrList bldr in
+        let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
+        let llVal2 = codegen_expr expr2 env arrayEnv parentFuncStrList bldr in
         let rightHandLLVal = 
             (match binAssOp with
             | BinAssign -> 
@@ -765,21 +737,26 @@ and codegen_expr expr env parentFuncStrList bldr =
                  | EUnary(UnaryDeref, _) -> build_load llVal2 "tmp_load" bldr
                  | _ -> llVal2
                 )
-            | BinAssignMulti -> codegen_expr (EBinOp (BinMulti, expr1, expr2)) env parentFuncStrList bldr
-            | BinAssignDiv -> codegen_expr (EBinOp (BinDiv, expr1, expr2)) env parentFuncStrList bldr
-            | BinAssignMod -> codegen_expr (EBinOp (BinMod, expr1, expr2)) env parentFuncStrList bldr
-            | BinAssignPlus -> codegen_expr (EBinOp (BinPlus, expr1, expr2)) env parentFuncStrList bldr
-            | BinAssignMinus -> codegen_expr (EBinOp (BinMinus, expr1, expr2)) env parentFuncStrList bldr
+            | BinAssignMulti -> codegen_expr (EBinOp (BinMulti, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignDiv -> codegen_expr (EBinOp (BinDiv, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignMod -> codegen_expr (EBinOp (BinMod, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignPlus -> codegen_expr (EBinOp (BinPlus, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignMinus -> codegen_expr (EBinOp (BinMinus, expr1, expr2)) env arrayEnv parentFuncStrList bldr
             ) 
         in
-        build_store rightHandLLVal llVal1 bldr
+        let llVal1 = 
+            if (pointer_type (type_of rightHandLLVal) = type_of llVal1) then llVal1
+            else build_load llVal1 "tmp_load" bldr
+        in
+        let _ = build_store rightHandLLVal llVal1 bldr in
+        rightHandLLVal
     | EConditional (exprCondition, exprTrue, exprFalse) -> 
-        let trueBB, falseBB = codegen_conditional_expr exprCondition None None env parentFuncStrList bldr in
+        let trueBB, falseBB = codegen_conditional_expr exprCondition None None env arrayEnv parentFuncStrList bldr in
         let parentFunc = block_parent trueBB in
         let mergeBB = append_block llctx "merge" parentFunc in
         position_at_end trueBB bldr;
 
-        let llVal1 = codegen_expr exprTrue env parentFuncStrList bldr in
+        let llVal1 = codegen_expr exprTrue env arrayEnv parentFuncStrList bldr in
         let llVal1 =
         (match exprTrue with
          | EId _ 
@@ -790,7 +767,7 @@ and codegen_expr expr env parentFuncStrList bldr =
         ignore (build_br mergeBB bldr);
 
         position_at_end falseBB bldr;
-        let llVal2 = codegen_expr exprFalse env parentFuncStrList bldr in
+        let llVal2 = codegen_expr exprFalse env arrayEnv parentFuncStrList bldr in
         let llVal2 =
         (match exprFalse with
          | EId _ 
@@ -807,7 +784,7 @@ and codegen_expr expr env parentFuncStrList bldr =
         let countLLVal = 
         (match arrayOption with
          | None -> const_int int_type 1
-         | Some (ArrExp exp) -> codegen_expr exp env parentFuncStrList bldr
+         | Some (ArrExp exp) -> codegen_expr exp env arrayEnv parentFuncStrList bldr
         ) in
         let sizeOf = size_of llValType in
         let sizeLLVal = build_mul sizeOf countLLVal "tmp_size" bldr in
@@ -820,7 +797,7 @@ and codegen_expr expr env parentFuncStrList bldr =
         let llValType = get_llvm_type bType pointerCnt in
         let countLLVal = 
         (match newExprOption with
-        | Some (Some (ArrExp exp), None) -> codegen_expr exp env parentFuncStrList bldr
+        | Some (Some (ArrExp exp), None) -> codegen_expr exp env arrayEnv parentFuncStrList bldr
         | None -> const_int int_type 1
         | _ -> raise (Terminate "This shouldn't have happened")
         ) in
@@ -832,7 +809,7 @@ and codegen_expr expr env parentFuncStrList bldr =
             build_call funLLValue [|sizeLLVal|] "tmp_new" bldr (*NOTE: the function arg might be problematic...*)
         )
     | EDelete exp -> 
-        let llValExpr = codegen_expr exp env parentFuncStrList bldr in
+        let llValExpr = codegen_expr exp env arrayEnv parentFuncStrList bldr in
         let pointerToDestroy = build_load llValExpr "tmp_load" bldr in
         (match lookup_function "dispose" llm with
          | None -> raise (Terminate "Couldn't locate dispose in symbol table")
@@ -841,7 +818,7 @@ and codegen_expr expr env parentFuncStrList bldr =
         )
     | ECast (OType (bType, pointerCnt), expr) ->
         let llTargetType = get_llvm_type bType pointerCnt in
-        let exprLLVal = codegen_expr expr env parentFuncStrList bldr in
+        let exprLLVal = codegen_expr expr env arrayEnv parentFuncStrList bldr in
         let llSourceType = type_of exprLLVal in
         let convResult = 
             if llTargetType = int_type then
@@ -944,14 +921,34 @@ and get_llvm_type bType cnt =
     | _ as num ->
         pointer_type (get_llvm_type bType (num - 1))
 
-and process_args eList paramTypeArray env parentFuncStrList bldr = 
+and process_args eList paramTypeArray env arrayEnv parentFuncStrList bldr = 
     let paramTypeList = Array.to_list paramTypeArray in
     let aux e p = 
-        let eLLVal = codegen_expr e env parentFuncStrList bldr in
+        (*let eLLVal = 
+            (match e with
+            | EId id as e -> 
+                (try
+                    let _ = Hashtbl.find arrayEnv id in
+                    let llVal = codegen_expr e env arrayEnv parentFuncStrList bldr in
+                    let constZero = const_int int_type 0 in
+                    (*Printf.printf "found one, %s: " id;
+                    Printf.printf "%s - %s, %s\n" (string_of_llvalue llVal) (string_of_lltype (type_of llVal));
+                    llVal*)
+                    build_in_bounds_gep llVal [|constZero|] "tmp_access" bldr
+                with
+                | Not_found -> codegen_expr e env arrayEnv parentFuncStrList bldr
+                )
+            | _ as e -> codegen_expr e env arrayEnv parentFuncStrList bldr
+            )
+        in*)
+        let eLLVal = codegen_expr e env arrayEnv parentFuncStrList bldr in
         let eType = type_of eLLVal in
         if (eType = p) then eLLVal
-        else
-            build_load eLLVal "tmp_load" bldr
+        else begin
+            let eLLVal = build_load eLLVal "tmp_load" bldr in
+            if (p = (type_of eLLVal)) then eLLVal
+            else build_load eLLVal "tmp_load" bldr
+        end
     in
     List.map2 (fun e p -> aux e p) eList paramTypeList
 
@@ -974,10 +971,10 @@ and make_param_array paramOption =
         let types = List.map (fun (_, b) -> b) llTypedParams in
         Array.of_list names, Array.of_list types
 
-and codegen_conditional_expr condExpr trueBBOption falseBBOption env parentFuncStrList bldr = (* caller is responsible for adding 
+and codegen_conditional_expr condExpr trueBBOption falseBBOption env arrayEnv parentFuncStrList bldr = (* caller is responsible for adding 
                                                                                                * branches at the end of basic blocks *)
     let aux e trueBBOption falseBBOption =
-        let exprLLVal = codegen_expr e env parentFuncStrList bldr in
+        let exprLLVal = codegen_expr e env arrayEnv parentFuncStrList bldr in
         let exprLLVal = 
             (match e with
              | ENull -> const_int bool_type 0
@@ -1016,7 +1013,7 @@ and codegen_conditional_expr condExpr trueBBOption falseBBOption env parentFuncS
             (match opand1 with
              | EBinOp(op1, _, _) as e ->
                 if ((op1 = BinAnd) || (op1 = BinOr)) then
-                    codegen_conditional_expr e trueBBOption falseBBOption env parentFuncStrList bldr
+                    codegen_conditional_expr e trueBBOption falseBBOption env arrayEnv parentFuncStrList bldr
                 else
                     if binOp = BinAnd then
                         aux e None falseBBOption
@@ -1036,7 +1033,7 @@ and codegen_conditional_expr condExpr trueBBOption falseBBOption env parentFuncS
                 (match opand2 with
                  | EBinOp(op2, _, _) as e ->
                     if ((op2 = BinAnd) || (op2 = BinOr)) then
-                        codegen_conditional_expr e trueBBOption (Some falseBB1) env parentFuncStrList bldr
+                        codegen_conditional_expr e trueBBOption (Some falseBB1) env arrayEnv parentFuncStrList bldr
                     else
                         aux e trueBBOption (Some falseBB1)
                  | _ as op2 ->
@@ -1050,7 +1047,7 @@ and codegen_conditional_expr condExpr trueBBOption falseBBOption env parentFuncS
                 (match opand2 with
                  | EBinOp(op2, _, _) as e ->
                     if ((op2 = BinAnd) || (op2 = BinOr)) then
-                        codegen_conditional_expr e (Some trueBB1) falseBBOption env parentFuncStrList bldr
+                        codegen_conditional_expr e (Some trueBB1) falseBBOption env arrayEnv parentFuncStrList bldr
                     else
                         aux e (Some trueBB1) falseBBOption
                  | _ as op2 ->
@@ -1115,7 +1112,7 @@ let code_gen ast =
     | _ as tree ->
         try
             let bldr = builder llctx in
-            let _ = List.iter (fun x -> generate_code x SGlobal None [""] None bldr) tree in
+            let _ = List.iter (fun x -> generate_code x SGlobal None None [""] None bldr) tree in
             llm
         with
         | _ as e -> Printf.printf "\x1b[31mException\x1b[0m: %s\n" (Printexc.to_string e); dump_module llm; exit 1
