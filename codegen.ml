@@ -231,7 +231,7 @@ let rec generate_code node scope envOpt arrayEnvOpt parentFuncStrList tripleOpt 
                 let parentFunction = block_parent currentBB in
                 let returnBB = append_block llctx "func_return" parentFunction in
                 position_at_end returnBB bldr;
-                let retLLVal = locate_llval env "_retVal" bldr in
+                let retLLVal = locate_llval env "_retVal" parentFuncStrList bldr in
                 let retLLVal = build_load retLLVal "ret_load" bldr in
                 ignore (build_ret retLLVal bldr);
 
@@ -243,7 +243,7 @@ let rec generate_code node scope envOpt arrayEnvOpt parentFuncStrList tripleOpt 
                     | _ -> raise (Terminate "Only ReturnBrances should have been in this list")
                 ) basicBlocksInNeedOfABranchTarget
             else
-                let retLLVal = locate_llval env "_retVal" bldr in
+                let retLLVal = locate_llval env "_retVal" parentFuncStrList bldr in
                 let retLLVal = build_load retLLVal "ret_load" bldr in
                 ignore (build_ret retLLVal bldr);
         end
@@ -443,7 +443,7 @@ and codegen_stmt stmt env arrayEnv labels parentFuncStrList bldr =
             (match exprOption with
              | None -> build_ret_void bldr
              | Some expr ->
-                let retLLVal = locate_llval env "_retVal" bldr in
+                let retLLVal = locate_llval env "_retVal" parentFuncStrList bldr in
                 (match expr with
                  | ENull ->
                     let currentBB = insertion_block bldr in
@@ -470,7 +470,7 @@ and codegen_stmt stmt env arrayEnv labels parentFuncStrList bldr =
 
 and codegen_expr expr env arrayEnv parentFuncStrList bldr =  
     match expr with
-    | EId name -> locate_llval env name bldr
+    | EId name -> locate_llval env name parentFuncStrList bldr
     | EExpr nExpr -> codegen_expr nExpr env arrayEnv parentFuncStrList bldr
     | EBool b -> 
             let x = if b = true then 1 else 0 in 
@@ -547,7 +547,18 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
         aux parentFuncStrList
     | EArray (aExpr, ArrExp idxExpr) -> 
         let exprLLV = codegen_expr aExpr env arrayEnv parentFuncStrList bldr in
-        let baseVal = exprLLV in (*aExpr is either an identifier or a function call? either way, we shouldn't load it I think*)
+        let baseVal = 
+            (match aExpr with
+             | EId id -> 
+                (try
+                    let _ = Hashtbl.find arrayEnv id in
+                    exprLLV
+                with
+                | Not_found -> build_load exprLLV "tmp_base_load" bldr
+                )
+            | _ ->  exprLLV 
+            )
+        in (*aExpr is either an identifier or a function call? either way, we shouldn't load it I think*)
         let offset = 
             let partial = codegen_expr idxExpr env arrayEnv parentFuncStrList bldr in
             (match idxExpr with
@@ -889,7 +900,7 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
         in
         convResult
 
-and locate_llval env name bldr = 
+and locate_llval env name parentFuncStrList bldr = 
     try
         Hashtbl.find env name
     with
@@ -899,13 +910,38 @@ and locate_llval env name bldr =
             build_load v "tmp_load" bldr
         with
         | Not_found ->
-            let resOption = lookup_global name llm in
+            let rec aux l = 
+                let vName, lNames = 
+                (match l with
+                 | [] -> name, []
+                 | _ as lN -> "_" ^ (string_of_list lN) ^ "_ref" ^ name, lN
+                )
+                in
+                try
+                    Hashtbl.find env vName
+                with
+                | Not_found ->
+                    if (l = []) then begin
+                        let resOption = lookup_global name llm in
+                        match resOption with
+                        | Some x -> x
+                        | None -> 
+                            Printf.printf "\x1b[31mError\x1b[0m: Couldn't locate %s during generation.\n" name;
+                            dump_module llm;
+                            exit 1
+                    end
+                    else aux (List.tl l)
+            in
+            aux parentFuncStrList
+
+            (*let resOption = lookup_global name llm in
             match resOption with
             | Some x -> x
             | None -> 
                 Printf.printf "\x1b[31mError\x1b[0m: Couldn't locate %s during generation.\n" name;
                 dump_module llm;
                 exit 1
+                *)
         )
                         
 and get_llvm_type bType cnt =
