@@ -736,11 +736,13 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
          | LocLeft -> modifiedLLValExpr
         )
     | EBinAssign (binAssOp, expr1, expr2) -> 
-        let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
-        let llVal2 = codegen_expr expr2 env arrayEnv parentFuncStrList bldr in
+        (*let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
+        let llVal2 = codegen_expr expr2 env arrayEnv parentFuncStrList bldr in*)
         let rightHandLLVal = 
             (match binAssOp with
             | BinAssign -> 
+                let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
+                let llVal2 = codegen_expr expr2 env arrayEnv parentFuncStrList bldr in
                 (match expr2 with
                  | ENull -> const_null (element_type (type_of llVal1))
                  | EId _
@@ -755,6 +757,7 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
             | BinAssignMinus -> codegen_expr (EBinOp (BinMinus, expr1, expr2)) env arrayEnv parentFuncStrList bldr
             ) 
         in
+        let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
         let llVal1 = 
             if (pointer_type (type_of rightHandLLVal) = type_of llVal1) then llVal1
             else build_load llVal1 "tmp_load" bldr
@@ -918,7 +921,8 @@ and locate_llval env name parentFuncStrList bldr =
                 )
                 in
                 try
-                    Hashtbl.find env vName
+                    let v = Hashtbl.find env vName in
+                    build_load v "tmp_load" bldr
                 with
                 | Not_found ->
                     if (l = []) then begin

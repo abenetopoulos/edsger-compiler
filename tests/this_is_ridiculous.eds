@@ -1,0 +1,82 @@
+#include "stdio.h"
+
+int initialize(byref int x) {
+    x = 42;
+
+    return x + 123;
+}
+
+void someFunc(int a) {
+    int x;
+    int forwardDeclared(int b);
+    
+    void nestedFirstLevel(int a) {
+        int pipa;
+
+        int nestedSecondLevel() {
+            int cantThinkOfAName;
+            cantThinkOfAName = forwardDeclared(x);
+
+            writeString("cantThinkOfAName: ");
+            writeInteger(cantThinkOfAName);
+            writeChar('\n');
+
+            return cantThinkOfAName - 102 + x;
+        }
+
+        pipa = a;
+        writeString("pipa: ");
+        writeInteger(pipa);
+        writeChar('\n');
+        pipa += nestedSecondLevel();
+        x = pipa;
+    }    
+
+    int somethingElse;
+
+    int forwardDeclared(int b) {
+        if (b > 0)
+            return 1 + forwardDeclared(--b);
+        somethingElse = 12;
+
+        return 42;
+    }
+
+    x = 100;
+    someThingElse = 17;
+    writeString("x before nestedFirstLevel: ");
+    writeInteger(x);
+    writeChar('\n');
+    nestedFirstLevel(17);
+    writeString("x after nestedFirstLevel (should be 157): ");
+    writeInteger(x);
+    writeChar('\n');
+    
+    writeString("somethingElse after nestedFirstLevel (should be 12): ");
+    writeInteger(somethingElse);
+    writeChar('\n');
+}
+
+
+void main() {
+    int a;
+    int x[initialize(a)];
+    int i;
+
+    writeInteger(a);
+    writeChar('\n');
+
+    someFunc(16); 
+
+    x[0] = 17;
+    for (i = 1; i < a; i++) {
+        writeString("x[");
+        writeInteger(i - 1);
+        writeString("] = ");
+        writeInteger(x[i-1]);
+        writeChar('\n');
+        x[i] = (a - i) % x[i - 1];
+        if (x[i] == 0)
+            x[i] = a - i;
+    }
+}

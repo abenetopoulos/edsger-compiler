@@ -270,7 +270,8 @@ and check_expr expr =
                 | _ -> (TYPE_none, None)
                 )
             with Not_found ->
-                raise (Terminate "Undeclared identifier")
+                let excString = Printf.sprintf "Undeclared identifier '%s'" id in
+                raise (Terminate excString)
             )
     | EExpr expr -> check_expr expr
     | EBool b -> (TYPE_bool, Some RVal)
@@ -297,13 +298,14 @@ and check_expr expr =
                                                 with Not_found -> a) [] ids 
             in
             let length = List.length validEntries in
-            if (length = 0) then
-                (
-                List.iter (fun x -> Printf.printf "%s\n" x) ids;
-                raise (Terminate "No function definition matches this function call") 
-                )
-            else if (length > 1) then
-               raise (Terminate "Ambiguous call to function. Can't resolve") 
+            if (length = 0) then begin
+                let excString = Printf.sprintf "No function definition matches the call to '%s'" id in
+                raise (Terminate excString)
+            end
+            else if (length > 1) then begin
+                let excString = "Ambiguous call to function '%s'. Can't resolve" id in
+                raise (Terminate excString) 
+            end
             else
                 List.hd validEntries
     | EArray (expr, ArrExp arrExpr) ->

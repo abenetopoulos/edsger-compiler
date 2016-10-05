@@ -1,6 +1,7 @@
 #include "stdio.h"
 
 double globalDouble;
+int global[2];
 
 /*
 int test(int x) {
@@ -48,10 +49,16 @@ int testOuter(int a) {
     return x;
 }
 
+int simpleFunc(byref int x) {
+    x = 100;
+    return x + 42;
+}
+
 void main() {
     int a;
     int i;
     int j;
+    int x[simpleFunc(a)];
 
     void testFunc() {
         void someFunc(int a) {
