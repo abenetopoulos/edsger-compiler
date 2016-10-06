@@ -835,7 +835,7 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
         let exprLLVal = codegen_expr expr env arrayEnv parentFuncStrList bldr in
         let llSourceType = type_of exprLLVal in
         let convResult = 
-            if llTargetType = int_type then
+            if llTargetType = int_type then (
                 if llSourceType = double_type then
                     build_fptosi exprLLVal int_type "tmp_fptosi" bldr
                 else if llSourceType = char_type then
@@ -848,9 +848,13 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
                     )
-            else if llTargetType = double_type then
-                if llSourceType = int_type then
+            )
+            else if llTargetType = double_type then (
+                Printf.printf "conversion to double\n";
+                if llSourceType = int_type then (
+                    Printf.printf "conversion from int\n";
                     build_sitofp exprLLVal double_type "tmp_sitofp" bldr
+                )
                 else if llSourceType = char_type then
                     build_uitofp exprLLVal double_type "tmp_chartofp" bldr
                 else if llSourceType = bool_type then
@@ -861,7 +865,8 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
                     )
-            else if llTargetType = char_type then
+            )
+            else if llTargetType = char_type then (
                 if llSourceType = int_type then
                     build_trunc exprLLVal char_type "tmp_sitochar" bldr 
                 else if llSourceType = double_type then
@@ -874,7 +879,8 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
                     )
-            else if llTargetType = bool_type then
+            )
+            else if llTargetType = bool_type then (
                 if llSourceType = double_type then
                     let constZero = const_float double_type 0.0 in 
                     build_fcmp Fcmp.One exprLLVal constZero "tmp_fptobool" bldr
@@ -887,7 +893,8 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
                     )
-            else (*this will match casts between pointer types*)
+            )
+            else (*this will match casts between pointer types*) (
                 let bitcastNeeded = (llTargetType <> llSourceType) in (*this comparison might not work...*)
                 let actualLLVal =
                 (match expr with
@@ -900,6 +907,7 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                     build_bitcast actualLLVal llTargetType "tmp_ptrtoptr" bldr
                 else
                     actualLLVal
+            )
         in
         convResult
 
@@ -1105,7 +1113,9 @@ and codegen_conditional_expr condExpr trueBBOption falseBBOption env arrayEnv pa
 and generate_triple env scopeString bldr = 
     let auxTbl:(string, llvalue * lltype) Hashtbl.t = Hashtbl.create (Hashtbl.length env) in
     let aux k v =
-        if ((String.length k) > 4 && (String.sub k 0 4 = "_ref" || (String.sub k 0 4 <> "_ref" && k.[0] = '_'))) then (*NOTE: this check looks like shit, will probably perform like shit*)
+        if (k = "_retVal") then
+            ()
+        else if ((String.length k) > 4 && (String.sub k 0 4 = "_ref" || (String.sub k 0 4 <> "_ref" && k.[0] = '_'))) then (*NOTE: this check looks like shit, will probably perform like shit*)
             (*let valueToKeep = build_load v "tmp_load" bldr in*)
             let valueToKeep = v in
             Hashtbl.add auxTbl k (valueToKeep, element_type (type_of valueToKeep))

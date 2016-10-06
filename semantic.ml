@@ -303,7 +303,7 @@ and check_expr expr =
                 raise (Terminate excString)
             end
             else if (length > 1) then begin
-                let excString = "Ambiguous call to function '%s'. Can't resolve" id in
+                let excString = Printf.sprintf "Ambiguous call to function '%s'. Can't resolve" id in
                 raise (Terminate excString) 
             end
             else
@@ -476,5 +476,6 @@ and valid_conversion resType sourceType =
     | TYPE_pointer _, TYPE_pointer _ -> true
     | TYPE_pointer _, _ -> false
     | _, TYPE_pointer _ -> false
+    | _, TYPE_void -> false
     | _, _ -> true
 

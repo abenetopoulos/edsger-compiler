@@ -1,9 +1,43 @@
 #include "stdio.h"
+#include "math.h"
+#include "stdlib.h"
 
 int initialize(byref int x) {
     x = 42;
 
     return x + 123;
+}
+
+int someOtherFunc(int a) {
+    int i;
+
+    void aux (byref int a) {
+        a += 42 - i;
+    }
+
+    int secondAux(int b, double c) {
+        double rec (int x) {
+            if (x > 0) {
+                aux(x);
+                return c + ((double) x);
+            }else {
+                if (x < 0)
+                    return fabs(c - 42.123);
+                else
+                    return rec(x + 100);
+            }
+
+            return 0.0;
+        }
+
+        double d;
+        d = rec(b);
+        return round(d);
+    }
+
+    i = 10;
+    i = secondAux(a, 88.33);
+    return i;
 }
 
 void someFunc(int a) {
@@ -43,7 +77,7 @@ void someFunc(int a) {
     }
 
     x = 100;
-    someThingElse = 17;
+    somethingElse = 17;
     writeString("x before nestedFirstLevel: ");
     writeInteger(x);
     writeChar('\n');
