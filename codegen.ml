@@ -1,12 +1,11 @@
 (*TODO:
-  - when we pass an array as an argument, we should first do a gep, and then pass that as the argument for some moronic reason
-  - array accesses don't realy work?
+  - see how to link against del_checker and use that whenever calls to 'new' and 'delete' are made
   - test everything!
   - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
 
 (*NOTE: 
-  - changed what unary deref returns, might cause issues, keep in mind [6/9/16]
+  - changed what unary deref returns, might cause issues, keep in mind [achilles, 6/9/16]
  * *)
 
 open Llvm
@@ -833,6 +832,12 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
     | ECast (OType (bType, pointerCnt), expr) ->
         let llTargetType = get_llvm_type bType pointerCnt in
         let exprLLVal = codegen_expr expr env arrayEnv parentFuncStrList bldr in
+        let exprLLVal = 
+            (match expr with
+                | EId _ | EArray _ -> build_load exprLLVal "tmp_load" bldr
+                | _ -> exprLLVal
+            )
+        in
         let llSourceType = type_of exprLLVal in
         let convResult = 
             if llTargetType = int_type then (
@@ -843,16 +848,16 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                 else if llSourceType = bool_type then
                     build_zext exprLLVal int_type "tmp_booltosi" bldr
                 else 
+                    exprLLVal
+                    (*
                     (match expr with
                      | EId _ 
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
-                    )
+                    )*)
             )
             else if llTargetType = double_type then (
-                Printf.printf "conversion to double\n";
                 if llSourceType = int_type then (
-                    Printf.printf "conversion from int\n";
                     build_sitofp exprLLVal double_type "tmp_sitofp" bldr
                 )
                 else if llSourceType = char_type then
@@ -860,11 +865,13 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                 else if llSourceType = bool_type then
                     build_uitofp exprLLVal double_type "tmp_booltofp" bldr
                 else 
+                    exprLLVal
+                    (*
                     (match expr with
                      | EId _ 
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
-                    )
+                    )*)
             )
             else if llTargetType = char_type then (
                 if llSourceType = int_type then
@@ -874,11 +881,13 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                 else if llSourceType = bool_type then
                     build_zext exprLLVal char_type "tmp_booltochar" bldr
                 else 
+                    exprLLVal
+                    (*
                     (match expr with
                      | EId _ 
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
-                    )
+                    )*)
             )
             else if llTargetType = bool_type then (
                 if llSourceType = double_type then
@@ -888,18 +897,20 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                     let constZero = const_int int_type 0 in 
                     build_icmp Icmp.Ne exprLLVal constZero "tmp_itobool" bldr
                 else 
+                    exprLLVal
+                    (*
                     (match expr with
                      | EId _ 
                      | EArray _ -> build_load exprLLVal "tmp_load" bldr
                      | _ -> exprLLVal
-                    )
+                    )*)
             )
             else (*this will match casts between pointer types*) (
                 let bitcastNeeded = (llTargetType <> llSourceType) in (*this comparison might not work...*)
                 let actualLLVal =
                 (match expr with
                  | EId _ 
-                 | EUnary(UnaryDeref, _) -> build_load exprLLVal "tmp_load" bldr
+                 | EUnary(UnaryDeref, _) -> exprLLVal (*build_load exprLLVal "tmp_load" bldr*)
                  | EUnary(UnaryRef, _) -> exprLLVal (*should do nothing, since the exprLLVal is the result of getelementpointer?*)
                  | _ -> exprLLVal
                 ) in
@@ -945,15 +956,6 @@ and locate_llval env name parentFuncStrList bldr =
                     else aux (List.tl l)
             in
             aux parentFuncStrList
-
-            (*let resOption = lookup_global name llm in
-            match resOption with
-            | Some x -> x
-            | None -> 
-                Printf.printf "\x1b[31mError\x1b[0m: Couldn't locate %s during generation.\n" name;
-                dump_module llm;
-                exit 1
-                *)
         )
                         
 and get_llvm_type bType cnt =
@@ -972,23 +974,6 @@ and get_llvm_type bType cnt =
 and process_args eList paramTypeArray env arrayEnv parentFuncStrList bldr = 
     let paramTypeList = Array.to_list paramTypeArray in
     let aux e p = 
-        (*let eLLVal = 
-            (match e with
-            | EId id as e -> 
-                (try
-                    let _ = Hashtbl.find arrayEnv id in
-                    let llVal = codegen_expr e env arrayEnv parentFuncStrList bldr in
-                    let constZero = const_int int_type 0 in
-                    (*Printf.printf "found one, %s: " id;
-                    Printf.printf "%s - %s, %s\n" (string_of_llvalue llVal) (string_of_lltype (type_of llVal));
-                    llVal*)
-                    build_in_bounds_gep llVal [|constZero|] "tmp_access" bldr
-                with
-                | Not_found -> codegen_expr e env arrayEnv parentFuncStrList bldr
-                )
-            | _ as e -> codegen_expr e env arrayEnv parentFuncStrList bldr
-            )
-        in*)
         let eLLVal = codegen_expr e env arrayEnv parentFuncStrList bldr in
         let eType = type_of eLLVal in
         if (eType = p) then eLLVal

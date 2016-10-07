@@ -93,8 +93,8 @@ let () =
             if optimize then "-O=2"
             else ""
         in
-        let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in
-        (*let llcCommand = Printf.sprintf "/Volumes/Files/Developer/bin/llc %s -filetype=asm %s" optString outName in*)
+        (*let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in*)
+        let llcCommand = Printf.sprintf "/Volumes/Files/Developer/bin/llc %s -filetype=asm %s" optString outName in
         if (Sys.command llcCommand <> 0) then begin
             Printf.printf "DEBUB: llc could not compile our program\n"; exit 1
         end
@@ -114,10 +114,10 @@ let () =
                 if (baseName = ".temp") then "a.out"
                 else baseName
             in
-            let libName = "~/Developer/univ/compiler/lib/linux/lib.a" in
-            (*let libName = "" in*)
-            let clangCommand = Printf.sprintf "clang-3.5 -g %s %s -o %s" asmName libName binName in
-            (*let clangCommand = Printf.sprintf "clang -g %s %s -o %s" asmName libName binName in*)
+            (*let libName = "~/Developer/univ/compiler/lib/linux/lib.a" in*)
+            let libName = "" in
+            (*let clangCommand = Printf.sprintf "clang-3.5 -g %s %s -o %s" asmName libName binName in*)
+            let clangCommand = Printf.sprintf "clang -g %s %s -o %s" asmName libName binName in
             if (Sys.command clangCommand <> 0) then begin
                 Printf.printf "DEBUG: Clang could not compile to binary\n"; exit 1
             end
