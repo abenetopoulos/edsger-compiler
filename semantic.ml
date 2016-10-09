@@ -1,7 +1,3 @@
-(*TODO: 
-    - check that labels in SBreak/SReturn/SContinue exist. Do stuff with labels in SFor [some weeks later, "stuff with labels" is not helpful...]
-*)
-
 open Ast
 open Types
 open Symbol
@@ -12,6 +8,8 @@ open List
 exception Terminate of string
 
 type value_persistence = LVal | RVal
+
+let labelList : (string list) ref = ref [] (*NOTE: not the best thing, but it'll do*)
 
 let get_param_string params = 
     let aux acc p =
@@ -118,7 +116,9 @@ and check_declaration d =
                         let hashType = type_matcher bType pointerCnt arrOption in
                         let _ = newVariable (id_make id) hashType true in
                         ()
-                    with Failure_NewEntry _ -> raise (Terminate "redeclaration of variable not allowed") (*if redeclaration, abort*)
+                    with Failure_NewEntry _ -> 
+                        let excStr = Printf.sprintf  "redeclaration of variable '%s' not allowed" id in
+                        raise (Terminate excStr) (*if redeclaration, abort*)
         in List.iter checkAndEnter declList
     | FunDecl (OType(bType, pointerCnt), name, paramOption) ->
         let paramString = match paramOption with
@@ -214,37 +214,78 @@ and check_stmt stmt inLoop retType =
             end
             else raise (Terminate "Condition must be of type bool")
     | SFor (labelOption, initialization, condition, afterthought, stmt) ->
-            let _ = 
-                (match initialization with
-                 | None -> ()
-                 | Some exp -> let _ = check_expr exp in ()
-                ) 
-            in ();
-            let _ = 
-                (match condition with
-                 | None -> ()
-                 | Some exp -> 
-                    let (condType, _) = check_expr exp 
-                    in
-                        if not (equalType condType TYPE_bool) then
-                            raise (Terminate "Condition must be of type bool")
-                ) 
-            in ();
-            let _ = (match afterthought with
-            | None -> ()
-            | Some exp -> let _ = check_expr exp in ()
-            ) in ();
-            check_stmt stmt true retType
-    | SContinue _ ->
+        let shouldRemoveWhenDone = 
+            (match labelOption with
+             | None -> false
+             | Some l -> 
+                let label = List.filter (fun d -> l = d) !labelList in
+                if label <> [] then
+                    let excString = Printf.sprintf "Multiple '%s' labels\n" l in
+                    raise (Terminate excString)
+                else (
+                    labelList := l :: !labelList; 
+                    true
+                )
+            )
+        in
+        let _ = 
+            (match initialization with
+             | None -> ()
+             | Some exp -> let _ = check_expr exp in ()
+            ) 
+        in ();
+        let _ = 
+            (match condition with
+             | None -> ()
+             | Some exp -> 
+                let (condType, _) = check_expr exp 
+                in
+                    if not (equalType condType TYPE_bool) then
+                        raise (Terminate "Condition must be of type bool")
+            ) 
+        in ();
+        let _ = 
+            (match afterthought with
+             | None -> ()
+             | Some exp -> let _ = check_expr exp in ()
+             ) 
+        in ();
+        check_stmt stmt true retType;
+
+        if shouldRemoveWhenDone then
+            labelList := (List.tl !labelList)
+        else
+            ()
+    | SContinue labelOpt ->
             if (inLoop = false) then
                 raise (Terminate "'continue' statement must be inside loop")
-            else
-                ()
-    | SBreak _ ->
+            else begin
+                match labelOpt with
+                | None -> ()
+                | Some l ->
+                    let label = List.filter (fun d -> l = d) !labelList in
+                    if (label = []) then (
+                        let excString = Printf.sprintf "Nonexistent label '%s' within continue statement's range\n" l in
+                        raise (Terminate excString)
+                    )
+                    else
+                        ()
+            end
+    | SBreak labelOpt ->
             if (inLoop = false) then
                 raise (Terminate "'break' statement must be inside loop")
-            else
-                ()
+            else begin
+                match labelOpt with
+                | None -> ()
+                | Some l ->
+                    let label = List.filter (fun d -> l = d) !labelList in
+                    if (label = []) then (
+                        let excString = Printf.sprintf "Nonexistent label '%s' within break statement's range\n" l in
+                        raise (Terminate excString)
+                    )
+                    else
+                        ()
+            end
     | SReturn exprOption ->
             match exprOption with
             | None ->
@@ -344,7 +385,9 @@ and check_expr expr =
                                 if (equalType basicType rightBasicType && cnt1 == cnt2) then
                                     (type1, Some RVal)
                                 else
-                                    raise (Terminate "Assigning to incompatible pointer type")
+                                    let excStr = Printf.sprintf "Assigning from ptr %d to ptr %d\n" cnt2 cnt1 in
+                                    raise (Terminate excStr)
+                                    (*raise (Terminate "Assigning to incompatible pointer type")*)
                         | TYPE_none -> (TYPE_none, None)
                         | _ -> raise (Terminate "Invalid operands to assignment expression")
                         )
@@ -382,20 +425,21 @@ and check_expr expr =
                 | None -> None
                 | Some (ArrExp expr) -> Some expr 
             ) in
-            let hashType = type_matcher basicType pointerCnt exprOption in
+            let hashType = type_matcher basicType pointerCnt None in
+            (*let hashType = type_matcher basicType pointerCnt exprOption in*)
             (hashType, Some RVal)
     | ENewP (OType(bType, pointerCnt), newExprOption) ->
             let hashType =
                 (
                 match newExprOption with
-                | Some (Some (ArrExp expr), None) -> type_matcher bType pointerCnt (Some expr)
+                | Some (Some (ArrExp expr), None) -> type_matcher bType pointerCnt None (*(Some expr)*)
                 | Some (None, Some _) -> raise (Terminate "Invalid operands to binary operation")
                 | None -> type_matcher bType pointerCnt None
                 | _ -> raise (Terminate "oops")
                 )
             in
             (hashType, Some RVal)
-    | EDelete expr -> (*TODO(achilles): check that memory pointed to by expr was allocated via new*)
+    | EDelete expr ->
             let (exprType, _) = check_expr expr in
             (
             match exprType with

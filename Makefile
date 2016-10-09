@@ -10,6 +10,7 @@ LLVM_FILES=llvm.cmxa llvm_analysis.cmxa
 
 all:
 	make semantic
+	make libchecker
 	menhir -v parser.mly
 	ocamllex lexer.mll
 	ocamlopt -c parser.mli
@@ -72,6 +73,9 @@ codegen: codegen.ml
 	$(OCAMLOPT) -I +llvm-3.5 -c codegen.mli
 	$(OCAMLOPT) -I +llvm-3.5 -c codegen.ml
 
+libchecker: del_checker.c
+	clang -c -nostdlib del_checker.c
+	ar rcs libchecker.a del_checker.o
 
 lexer.ml: lexer.mll
 	ocamllex $<
@@ -92,7 +96,7 @@ parser.ml : parser.mly
 	$(OCAMLOPT) $(CAMLP5_FLAGS) -c $<
 
 clean:
-	rm *.cmi *.cmo *.mli *.cmx *.automaton *.conflicts *.o parser.ml 
+	rm *.cmi *.cmo *.mli *.cmx *.automaton *.conflicts *.o parser.ml libchecker.a
 
 distclean: clean
 	rm edsgerc lexer.ml

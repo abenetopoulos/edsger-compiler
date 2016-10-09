@@ -16,7 +16,7 @@
 
 let digit = ['0'-'9']
 let hexdigit = ['0'-'9' 'a'-'f']
-let const_char = ''' ('\\' ['n' 't' 'r' '0' '\\' '''] | ['a'-'z' 'A'-'Z' '0'-'9'] | '\\' 'x' hexdigit hexdigit) ''' 
+let const_char = ''' ('\\' ['n' 't' 'r' '0' '\\' '''] | ['\x20'-'\x5b' '\x5d'-'\x7e'] (*['a'-'z' 'A'-'Z' '0'-'9']*) | '\\' 'x' hexdigit hexdigit | '-' ) ''' 
 let exp = ['e' 'E'] ['-' '+']? digit+
 let int_in = digit+
 let float_in = digit+ '.' digit+ exp?
@@ -59,7 +59,8 @@ rule read incFiles=
         ID (Lexing.lexeme lexbuf)
     }
     | const_char {
-        let firstChar = (String.get (Lexing.lexeme lexbuf) 1) in
+        let currentString = Lexing.lexeme lexbuf in
+        let firstChar = (String.get currentString 1) in
         if (firstChar = '\\') then
             let secondChar = (String.get (Lexing.lexeme lexbuf) 2) in
             if (secondChar = 'n') then
