@@ -1,0 +1,34 @@
+#include "stdio.h"
+
+void main() {
+    int x[30];
+    int i;
+    int nElements;
+    int seed;
+
+    void printArray (char * msg, int * x, int n)
+    {
+        int i;
+
+        writeInteger(n);
+        writeChar('\n');
+        writeString(msg);
+        for (i = 0; i < n; i++) {
+            if (i > 0)
+                writeString(", ");
+            //writeInteger(i);
+            //writeString("-");
+            x[i] = 10;
+            //writeInteger(x[i]);
+        }
+        writeString("\n");
+    }
+
+    for (i = 0, seed = 65; i < 16; i++) {
+        x[i] = seed = (seed * 137 + 221 + i) % 101;
+    }
+
+    printArray("Let's see:", x, 16); 
+
+    writeChar('\n');
+}

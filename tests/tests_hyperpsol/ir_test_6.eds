@@ -1,0 +1,41 @@
+#include "stdio.h"
+
+int main()
+{
+	int a; 
+	int *b;
+	int c;
+	int **d;
+	int ***e;
+	double k;
+	double *l;
+	
+	// First simple test
+	b = &a;
+	a = 5;
+	writeInteger(a);
+	writeInteger(*b);
+	c = *b;
+	writeInteger(c);
+
+	// Second Test
+	d = &b;
+	e = &d;
+
+
+
+	a = 6;
+
+	**d = 7;
+	writeInteger(a);
+	writeInteger(*b);
+	writeInteger(c);
+	writeInteger(**d);
+	a = 0;
+
+	l = &k;
+
+	k = 9.0;
+
+	return ***e;
+}

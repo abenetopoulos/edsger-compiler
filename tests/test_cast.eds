@@ -1,0 +1,17 @@
+void main() {
+    int a;
+    double b;
+    int i;
+    int *pa;
+    int *pi;
+
+    i = 42;
+    b = 42.1234;
+
+    a = (int) b + i;
+
+    pa = &a;
+    pi = &i;
+
+    pa < pi;
+}

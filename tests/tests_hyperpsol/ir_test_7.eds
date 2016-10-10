@@ -1,0 +1,18 @@
+#include "stdio.h"
+
+int kaka(int b){
+	writeInteger(b);
+	return b;
+}
+
+int main()
+{
+	
+	char a;
+
+	a = 'a';
+
+	writeChar(a);
+	writeInteger(10);
+	return 0;
+}

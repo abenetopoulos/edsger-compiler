@@ -154,7 +154,7 @@ rule read incFiles=
     | _ {printf "\x1b[31mError\x1b[0m - file '%s', line %d: Invalid token '%s'.\n" (List.hd incFiles) lexbuf.lex_curr_p.pos_lnum (Lexing.lexeme lexbuf) ; exit 1}
 and start_include incFiles=
     parse
-    | [' ']+ '"' {let fileName = read_string incFiles (Buffer.create 80) lexbuf in 
+    | [' ']+ '"' {let fileName = "./inc/" ^ read_string incFiles (Buffer.create 80) lexbuf in 
            if (not (List.exists (fun x -> x = fileName) incFiles)) then
                 let inF = open_in fileName in
                 let lbuf = Lexing.from_channel inF in

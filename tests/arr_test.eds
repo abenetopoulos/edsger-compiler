@@ -1,0 +1,17 @@
+void funcTest(int* x, int a) {
+    int i;
+
+    for (i = 0; i < a; i++) {
+        x[i] = 10;       
+    }
+}
+
+
+void main() {
+    int a;
+    int x[16];    
+
+    a = 16;
+
+    funcTest(x, a);
+}

@@ -1,0 +1,14 @@
+#include "stdio.h"
+
+void main(){
+	int * pupi[3], pozo;
+	double *** poropo, kakouro;
+	bool tzifo;
+	char kokoni;
+	(int) kakouro;
+
+}
+
+void main() {
+	
+}

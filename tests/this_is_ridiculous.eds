@@ -19,7 +19,7 @@ int someOtherFunc(int a) {
         double rec (int x) {
             if (x > 0) {
                 aux(x);
-                return c + ((double) x);
+                return c + (double) x;
             }else {
                 if (x < 0)
                     return fabs(c - 42.123);

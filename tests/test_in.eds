@@ -1,0 +1,17 @@
+#include "stdio.h"
+
+void main() {
+    int i;
+    char c;
+    char s[100];
+
+    for (;;) {
+        i = readInteger();
+
+        writeInteger(i);
+        writeChar('\n');
+        if (i == 0)
+            break;
+    }
+
+}

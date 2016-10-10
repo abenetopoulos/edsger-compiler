@@ -1,0 +1,10 @@
+void main(){
+	
+	if(5 > 3)
+		if(3<2)
+			"Popi";
+	else
+		"Parotsi";
+
+
+}

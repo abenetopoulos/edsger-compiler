@@ -1,0 +1,27 @@
+#include "stdio.h"
+
+int main(){
+
+	int i;
+	for(1+2; false; 2+5) 3+8;
+
+	for(3+4; false; 2+7){
+		3 + 6;
+		if(false) {
+			3+8;
+
+		}
+		break;
+		1+8;
+	}
+
+	for(i=0; i<3; i++){
+		writeInteger(i);
+	}
+
+	1 + 2;
+
+	return 4;
+	return 0;
+	3 + 4;
+}

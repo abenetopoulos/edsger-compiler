@@ -1,0 +1,22 @@
+#include "stdio.h"
+int main()
+{
+	int a;
+	int pipo(){
+		int b;
+		int kaka(){
+			int a;
+			a = -100;
+			return a;
+		}
+		a = a+1;
+		writeInteger(kaka());
+		return a;
+	}
+	a = 1;
+	writeInteger(pipo());
+	a = a + 1;
+	writeInteger(a);
+	return 0;
+	
+}

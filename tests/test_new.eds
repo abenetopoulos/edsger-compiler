@@ -1,0 +1,18 @@
+#include "stdio.h"
+
+
+void main() {
+    int *p;
+    int a;
+    int **pp;
+
+    p = new int[100];
+    pp = new int*[20];
+
+
+    p[42] = 176;
+    p = p + 1;
+    delete pp;
+
+    writeString("Did not crash, did not quit\n");
+}

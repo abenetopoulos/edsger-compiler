@@ -1,0 +1,23 @@
+#include "stdio.h"
+
+void main() {
+    int i, j;
+    int x[100];
+
+outerLoop:    
+    for (i = 0; i < 100; i++) {
+        x[i] = 0;
+        innerLoop:
+        for (j = 0; j < 100; j++) {
+            x[i] += i * j + j;
+            if (x[i] > 1642)
+                break;
+
+            writeString("x[");
+            writeInteger(i);
+            writeString("]: ");
+            writeInteger(x[i]);
+            writeChar('\n');
+        }
+    }
+}

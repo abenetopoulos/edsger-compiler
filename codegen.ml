@@ -154,17 +154,6 @@ let rec generate_code node scope envOpt arrayEnvOpt parentFuncStrList tripleOpt 
     | FunDef(OType(bType, pointerCnt), name, paramOption, decls, stmts) ->
         let llType = get_llvm_type bType pointerCnt in
         let nameArray, baseParamArray = make_param_array paramOption in
-        (*let env, extraNames, extraValues, extraTypes = 
-            (match envOpt with
-             | None -> 
-                let e:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
-                e, [||], [||], [||]
-             | Some e -> 
-                let newEnv:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
-                let n, v, t = generate_triple e (string_of_list parentFuncStrList) bldr in
-                newEnv, n, v, t
-            )
-        in*)
         let env:(string, llvalue) Hashtbl.t = Hashtbl.create (List.length decls) in
         let arrayEnv:(string, bool) Hashtbl.t = Hashtbl.create (List.length decls) in
         let extraNames, extraValues, extraTypes = 
@@ -273,7 +262,7 @@ let rec generate_code node scope envOpt arrayEnvOpt parentFuncStrList tripleOpt 
                     | ReturnBranch bb ->
                         position_at_end bb bldr;
                         ignore (build_br returnBB bldr)
-                    | _ -> raise (Terminate "Only ReturnBrances should have been in this list")
+                    | _ -> raise (Terminate "Only ReturnBranches should have been in this list")
                 ) basicBlocksInNeedOfABranchTarget
             else
                 let retLLVal = locate_llval env "_retVal" parentFuncStrList bldr in
@@ -693,10 +682,6 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
             let constFalse = const_int bool_type 0 in
             let constTrue = const_int bool_type 1 in
             build_phi [(constFalse, falseBB); (constTrue, trueBB)] "tmp_phi" bldr
-         (*| BinComma ->
-            let llVal1 = codegen_expr opand1 env parentFuncStrList bldr in
-            let llVal2 = codegen_expr opand2 env parentFuncStrList bldr in
-            llVal2*)
          | _ as bop ->
             let llVal1 = codegen_expr opand1 env arrayEnv parentFuncStrList bldr in
             let llValType = 
@@ -1094,8 +1079,8 @@ and make_param_array paramOption =
         let types = List.map (fun (_, b) -> b) llTypedParams in
         Array.of_list names, Array.of_list types
 
-and codegen_conditional_expr condExpr trueBBOption falseBBOption env arrayEnv parentFuncStrList bldr = (* caller is responsible for adding 
-                                                                                               * branches at the end of basic blocks *)
+and codegen_conditional_expr condExpr trueBBOption falseBBOption env arrayEnv parentFuncStrList bldr = (*NOTE: caller is responsible for adding 
+                                                                                                        *      branches at the end of basic blocks *)
     let aux e trueBBOption falseBBOption =
         let exprLLVal = codegen_expr e env arrayEnv parentFuncStrList bldr in
         let exprLLVal = 

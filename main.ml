@@ -10,17 +10,18 @@ open Codegen
 open Llvm
 open Llvm_analysis
 
+let readFromStd : bool ref = ref false
+let writeLLToStd : bool ref = ref false
+let writeAsmToStd : bool ref = ref false
+let optimize : bool ref = ref false
+
 let get_args () =
-    let readStd : bool ref = ref false in
-    let writeLLStd : bool ref = ref false in
-    let writeAsmStd : bool ref = ref false in
-    let opt : bool ref = ref false in
     if Array.length Sys.argv > 1 then
     begin
         let name = Array.fold_left (fun acc a ->
-            if (a = "-i") then (readStd := true; writeAsmStd := true; acc)
-            else if (a = "-f") then (readStd := true; writeLLStd := true; acc)
-            else if (a = "-O") then (opt := true; acc)
+            if (a = "-i") then (readFromStd := true; writeAsmToStd := true; acc)
+            else if (a = "-f") then (readFromStd := true; writeLLToStd := true; acc)
+            else if (a = "-O") then (optimize := true; acc)
             else (
                 let ext = String.sub a ((String.length a) - 4) 4 in
                 if (ext = ".eds") then 
@@ -29,7 +30,7 @@ let get_args () =
                     acc
             )) "" Sys.argv
         in
-        !readStd, !writeLLStd, !writeAsmStd, !opt, name
+        name
     end
     else
         let usageString = "edsgerc: A compiler for the Edsger language written in OCaml\n\n" ^
@@ -52,10 +53,10 @@ let dump_assembly fName =
     | End_of_file -> close_in asmChannel
 
 let () =
-    let readFromStd, writeLLToStd, writeAsmToStd, optimize, name = get_args () in
+    let name = get_args () in
     let doNotCompile = false in
     let cin,fname =
-        if not readFromStd then(
+        if not !readFromStd then(
             Printf.printf "Filename: %s\n" name;
             open_in name, name
         )
@@ -70,7 +71,8 @@ let () =
         (match (verify_module llm) with
          | None -> Printf.printf "DEBUG: Module is correct\n"
          | Some e ->
-            Printf.printf "DEBUG: Invalid module: %s\n" e
+            Printf.printf "DEBUG: Invalid module: %s\n" e;
+            exit 1;
         );
 
         Printf.printf "DEBUG: will find name\n";
@@ -82,7 +84,7 @@ let () =
         in
         let outName = baseName ^ ".ll" in
         Printf.printf "DEBUG: Will write ir to: %s\n" outName;
-        if (writeLLToStd) then
+        if (!writeLLToStd) then
             dump_module llm
         else
             ()
@@ -90,7 +92,7 @@ let () =
         print_module outName llm;
 
         let optString = 
-            if optimize then "-O=2"
+            if !optimize then "-O=2"
             else ""
         in
         let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in
@@ -103,7 +105,7 @@ let () =
         ;
 
         let asmName = baseName ^ ".s" in
-        if (writeAsmToStd) then
+        if (!writeAsmToStd) then
             dump_assembly asmName
         else
             ()
@@ -114,10 +116,10 @@ let () =
                 if (baseName = ".temp") then "a.out"
                 else baseName
             in
-            let libName = "~/Developer/univ/compiler/lib/linux/lib.a" in
-            let libCheckerName = "~/Developer/univ/compiler/libchecker.a" in
+            let libName = "./stdlib/lib.a" in
+            let libCheckerName = "./libchecker.a" in
             (*let libName = "" in*)
-            let clangCommand = Printf.sprintf "clang-3.5 -g %s %s %s -o %s" asmName libCheckerName libName binName in
+            let clangCommand = Printf.sprintf "clang -g %s %s %s -o %s" asmName libCheckerName libName binName in
             (*let clangCommand = Printf.sprintf "clang -g %s %s -o %s" asmName libName binName in*)
             if (Sys.command clangCommand <> 0) then begin
                 Printf.printf "DEBUG: Clang could not compile to binary\n"; exit 1

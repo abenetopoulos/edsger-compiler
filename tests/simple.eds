@@ -1,0 +1,13 @@
+#include "stdio.h"
+
+void main() {
+    int a;
+    int i;
+
+    a = 17;
+    writeString("Hello there, agent #");
+    writeInteger(a);
+    writeChar('\n');
+}
+
+
