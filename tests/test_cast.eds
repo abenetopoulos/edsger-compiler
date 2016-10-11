@@ -1,3 +1,10 @@
+int* foo(int *x) {
+    int a;
+    a = *x;
+    return new int;
+}
+
+
 void main() {
     int a;
     double b;
@@ -7,8 +14,12 @@ void main() {
 
     i = 42;
     b = 42.1234;
+    //pi = foo(&i);
+    //*pi = 42;
+    //a = *(foo(&i));
+    *(foo(&i)) = 42;
 
-    a = (int) b + i;
+    a = 42 + *(foo(&i)) - 10;
 
     pa = &a;
     pi = &i;

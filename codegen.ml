@@ -1,11 +1,10 @@
 (*TODO:
   - test everything!
-  - change all string arguments to use a counter (to get output like clang's) {lowest priority possible}
 *)
 
 (*NOTE: 
   - changed what unary deref returns, might cause issues, keep in mind [achilles, 6/9/16]
- * *)
+*)
 
 open Llvm
 open Ast
@@ -313,8 +312,6 @@ and codegen_stmt stmt env arrayEnv labels parentFuncStrList generatedReturn bldr
         let thenBB, mergeBB = codegen_conditional_expr condExpr None None env arrayEnv parentFuncStrList bldr in
         position_at_end thenBB bldr;
 
-        (*ignore (codegen_stmt stmt env labels parentFuncStrList loopAfterthoughtOpt loopMergeOpt bldr);*)
-        (*let newRef: bool ref = ref false in*)
         let possibleBlocks = codegen_stmt stmt env arrayEnv labels parentFuncStrList generatedReturn bldr in
         let newThenBB = insertion_block bldr in
         position_at_end newThenBB bldr;
@@ -521,12 +518,12 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
     | EId name -> locate_llval env name parentFuncStrList bldr
     | EExpr nExpr -> codegen_expr nExpr env arrayEnv parentFuncStrList bldr
     | EBool b -> 
-            let x = if b = true then 1 else 0 in 
-            const_int bool_type x
+        let x = if b = true then 1 else 0 in 
+        const_int bool_type x
     | EInt i -> const_int int_type i
     | EChar c -> 
-            let ascii = Char.code c in
-            const_int char_type ascii
+        let ascii = Char.code c in
+        const_int char_type ascii
     | EDouble d -> const_float double_type d
     | EString s -> 
         let stringConstInit = const_stringz llctx s in
@@ -631,8 +628,12 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
                  (*build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr*)
          | UnaryDeref ->
              (*let ptrLLVal = build_gep exprLLVal [|constZero; constZero|] "tmp_ref" bldr in*)
-             let ptrLLVal = build_load exprLLVal "tmp_ptr" bldr in
-             ptrLLVal
+             (match uExpr with
+             | EFCall _ -> exprLLVal
+             | _ ->
+                let ptrLLVal = build_load exprLLVal "tmp_ptr" bldr in
+                ptrLLVal
+             )
              (*build_load ptrLLVal "tmp_load" bldr*)
          | UnaryPlus -> exprLLVal
          | UnaryMinus -> 
@@ -800,31 +801,33 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
          | LocLeft -> modifiedLLValExpr
         )
     | EBinAssign (binAssOp, expr1, expr2) -> 
-        (*let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
-        let llVal2 = codegen_expr expr2 env arrayEnv parentFuncStrList bldr in*)
-        let rightHandLLVal = 
+        let leftHandLLValOpt, rightHandLLVal = 
             (match binAssOp with
             | BinAssign -> 
                 let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
                 let llVal2 = codegen_expr expr2 env arrayEnv parentFuncStrList bldr in
                 (match expr2 with
-                 | ENull -> const_null (element_type (type_of llVal1))
+                 | ENull -> Some llVal1, const_null (element_type (type_of llVal1))
                  | EId _
                  | EArray _ 
-                 | EUnary(UnaryDeref, _) -> build_load llVal2 "tmp_load" bldr
-                 | _ -> llVal2
+                 | EUnary(UnaryDeref, _) -> Some llVal1, build_load llVal2 "tmp_load" bldr
+                 | _ -> Some llVal1, llVal2
                 )
-            | BinAssignMulti -> codegen_expr (EBinOp (BinMulti, expr1, expr2)) env arrayEnv parentFuncStrList bldr
-            | BinAssignDiv -> codegen_expr (EBinOp (BinDiv, expr1, expr2)) env arrayEnv parentFuncStrList bldr
-            | BinAssignMod -> codegen_expr (EBinOp (BinMod, expr1, expr2)) env arrayEnv parentFuncStrList bldr
-            | BinAssignPlus -> codegen_expr (EBinOp (BinPlus, expr1, expr2)) env arrayEnv parentFuncStrList bldr
-            | BinAssignMinus -> codegen_expr (EBinOp (BinMinus, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignMulti -> None, codegen_expr (EBinOp (BinMulti, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignDiv -> None, codegen_expr (EBinOp (BinDiv, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignMod -> None, codegen_expr (EBinOp (BinMod, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignPlus -> None, codegen_expr (EBinOp (BinPlus, expr1, expr2)) env arrayEnv parentFuncStrList bldr
+            | BinAssignMinus -> None, codegen_expr (EBinOp (BinMinus, expr1, expr2)) env arrayEnv parentFuncStrList bldr
             ) 
         in
-        let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
         let llVal1 = 
-            if (pointer_type (type_of rightHandLLVal) = type_of llVal1) then llVal1
-            else build_load llVal1 "tmp_load" bldr
+            (match leftHandLLValOpt with
+             | Some l -> l
+             | None ->
+                let llVal1 = codegen_expr expr1 env arrayEnv parentFuncStrList bldr in
+                if (pointer_type (type_of rightHandLLVal) = type_of llVal1) then llVal1
+                else build_load llVal1 "tmp_load" bldr
+            )
         in
         let _ = build_store rightHandLLVal llVal1 bldr in
         rightHandLLVal

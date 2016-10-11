@@ -57,7 +57,7 @@ let () =
     let doNotCompile = false in
     let cin,fname =
         if not !readFromStd then(
-            Printf.printf "Filename: %s\n" name;
+            (*Printf.printf "Filename: %s\n" name;*)
             open_in name, name
         )
         else stdin, "stdin"
@@ -69,13 +69,13 @@ let () =
         (*print_ast !astTree;*)
         let llm = code_gen !astTree in
         (match (verify_module llm) with
-         | None -> Printf.printf "DEBUG: Module is correct\n"
+         | None -> () (*Printf.printf "DEBUG: Module is correct\n"*)
          | Some e ->
-            Printf.printf "DEBUG: Invalid module: %s\n" e;
+            (*Printf.printf "DEBUG: Invalid module: %s\n" e;*)
             exit 1;
         );
 
-        Printf.printf "DEBUG: will find name\n";
+        (*Printf.printf "DEBUG: will find name\n";*)
         let baseName = 
             if (name = "") then ".temp"
             else
@@ -83,7 +83,7 @@ let () =
                 String.sub fname 0 dotI
         in
         let outName = baseName ^ ".ll" in
-        Printf.printf "DEBUG: Will write ir to: %s\n" outName;
+        (*Printf.printf "DEBUG: Will write ir to: %s\n" outName;*)
         if (!writeLLToStd) then
             dump_module llm
         else
@@ -98,10 +98,12 @@ let () =
         let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in
         (*let llcCommand = Printf.sprintf "/Volumes/Files/Developer/bin/llc %s -filetype=asm %s" optString outName in*)
         if (Sys.command llcCommand <> 0) then begin
-            Printf.printf "DEBUB: llc could not compile our program\n"; exit 1
+            (*Printf.printf "DEBUG: llc could not compile our program\n";*)
+            exit 1
         end
         else
-            Printf.printf "DEBUB: llc compiled our program\n"
+            (*Printf.printf "DEBUG: llc compiled our program\n"*)
+            ()
         ;
 
         let asmName = baseName ^ ".s" in
@@ -122,16 +124,26 @@ let () =
             let clangCommand = Printf.sprintf "clang -g %s %s %s -o %s" asmName libCheckerName libName binName in
             (*let clangCommand = Printf.sprintf "clang -g %s %s -o %s" asmName libName binName in*)
             if (Sys.command clangCommand <> 0) then begin
-                Printf.printf "DEBUG: Clang could not compile to binary\n"; exit 1
+                (*Printf.printf "DEBUG: Clang could not compile to binary\n";*)
+                exit 1
             end
             else
-                Printf.printf "DEBUB: Clang compiled our program\n"
+                ()
+                (*Printf.printf "DEBUG: Clang compiled our program\n"*)
             ;
         end
         else
             ()
         ;
         
+        if (!writeLLToStd || !writeAsmToStd) then
+            ignore (Sys.command "rm .temp.ll .temp.s")
+        else (
+            let delCommand = Printf.sprintf "rm %s %s" outName asmName in
+            ignore (Sys.command delCommand)
+        )
+        ;
+
         exit 0
      with
         | Failure msg         -> print_endline ("Failure --- " ^ msg); exit 1

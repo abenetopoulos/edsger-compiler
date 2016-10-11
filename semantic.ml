@@ -301,19 +301,19 @@ and check_stmt stmt inLoop retType =
 and check_expr expr =
     match expr with
     | EId id -> 
-            (
-            try
-                let e = lookupEntry (id_make id) LOOKUP_ALL_SCOPES false in
-                (match e.entry_info with
-                | ENTRY_variable varInfo -> (varInfo.variable_type, Some LVal)
-                | ENTRY_function funInfo -> (funInfo.function_result, Some RVal)
-                | ENTRY_parameter paramInfo -> (paramInfo.parameter_type, Some LVal)
-                | _ -> (TYPE_none, None)
-                )
-            with Not_found ->
-                let excString = Printf.sprintf "Undeclared identifier '%s'" id in
-                raise (Terminate excString)
+        (
+        try
+            let e = lookupEntry (id_make id) LOOKUP_ALL_SCOPES false in
+            (match e.entry_info with
+            | ENTRY_variable varInfo -> (varInfo.variable_type, Some LVal)
+            | ENTRY_function funInfo -> (funInfo.function_result, Some RVal)
+            | ENTRY_parameter paramInfo -> (paramInfo.parameter_type, Some LVal)
+            | _ -> (TYPE_none, None)
             )
+        with Not_found ->
+            let excString = Printf.sprintf "Undeclared identifier '%s'" id in
+            raise (Terminate excString)
+        )
     | EExpr expr -> check_expr expr
     | EBool b -> (TYPE_bool, Some RVal)
     | EInt i -> (TYPE_int, Some RVal)
@@ -322,33 +322,33 @@ and check_expr expr =
     | EString s -> (TYPE_pointer(TYPE_char, 1), Some RVal)
     | ENull -> (TYPE_none, None)
     | EFCall (id, actParams) ->
-            let paramStrings = match actParams with
-            | None -> ["N"]
-            | Some params -> get_act_param_strings params
-            in
-            let ids = List.map (fun x -> "_" ^ id ^ "_" ^ x) paramStrings in
-            let validEntries = List.fold_left (fun a x -> 
-                                                try 
-                                                    let ef = lookupEntry (id_make x) LOOKUP_ALL_SCOPES false in
-                                                    let e = (
-                                                        match ef.entry_info with
-                                                        | ENTRY_function entr -> entr
-                                                        | _ -> raise (Terminate "This should not have happened")
-                                                    )in
-                                                    (e.function_result, Some RVal) :: a
-                                                with Not_found -> a) [] ids 
-            in
-            let length = List.length validEntries in
-            if (length = 0) then begin
-                let excString = Printf.sprintf "No function definition matches the call to '%s'" id in
-                raise (Terminate excString)
-            end
-            else if (length > 1) then begin
-                let excString = Printf.sprintf "Ambiguous call to function '%s'. Can't resolve" id in
-                raise (Terminate excString) 
-            end
-            else
-                List.hd validEntries
+        let paramStrings = match actParams with
+        | None -> ["N"]
+        | Some params -> get_act_param_strings params
+        in
+        let ids = List.map (fun x -> "_" ^ id ^ "_" ^ x) paramStrings in
+        let validEntries = List.fold_left (fun a x -> 
+                                            try 
+                                                let ef = lookupEntry (id_make x) LOOKUP_ALL_SCOPES false in
+                                                let e = (
+                                                    match ef.entry_info with
+                                                    | ENTRY_function entr -> entr
+                                                    | _ -> raise (Terminate "This should not have happened")
+                                                )in
+                                                (e.function_result, Some RVal) :: a
+                                            with Not_found -> a) [] ids 
+        in
+        let length = List.length validEntries in
+        if (length = 0) then begin
+            let excString = Printf.sprintf "No function definition matches the call to '%s'" id in
+            raise (Terminate excString)
+        end
+        else if (length > 1) then begin
+            let excString = Printf.sprintf "Ambiguous call to function '%s'. Can't resolve" id in
+            raise (Terminate excString) 
+        end
+        else
+            List.hd validEntries
     | EArray (expr, ArrExp arrExpr) ->
             let (typeExpr, _) = check_expr expr in
             (match typeExpr with
