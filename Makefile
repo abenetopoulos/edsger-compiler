@@ -3,7 +3,6 @@ OCAMLOPT=ocamlopt -g
 COMPFLAGS= -g
 CAMLP5_FLAGS=-pp "camlp5o ./extend.cmo"
 LLVM_PATH=/usr/lib/llvm-3.5/lib/
-##LLVM_PATH=/Volumes/Files/Developer/lib/
 LLVM_VERS=llvm-3.5
 LLVM_FLAGS=-cc g++ -ccopt -L$(LLVM_PATH) -I +$(LLVM_VERS)
 LLVM_FILES=llvm.cmxa llvm_analysis.cmxa

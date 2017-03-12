@@ -1,27 +1,47 @@
-Compilers 2016, Flow L;
-National Technical University of Athens;
-Achilles Benetopoulos 031 12 614;
-Emmanouil Theodosis   031 12 026;
+## Edsger's Caml
+### A compiler for the Edsger programming language, written in OCaml
 
-The compiler is written in OCaml. Any further general comments will be added here.
+National Technical University of Athens;
+Compilers 2016, Flow L;
+
+_Achilles Benetopoulos_
+_Emmanouil Theodosis_ 
+
+Dependencies:
+- LLVM ocaml bindings
+- LLVM 3.5
+- clang
 
 To build the compiler, run :
+
+```bash
 $ make depend
 $ make
+```
 in the project's root directory. This will create a binary named "edsgerc".
 
 To remove all intermediate compilation files :
+
+```bash
 $ make clean
+```
 
 To get the project back to its initial state :
+
+```bash
 $ make distclean
+```
 
-To automatically run all the tests, simply type:
-$ ./run_tests.sh
-in the project's root directory. If a test fails (as is the case with "bad_bsort.eds" and "bad_hanoi.eds"), an appropriate
-message is displayed.
+Should you need to rebuild the standard library, run the script 'libs.sh' inside the 'stdlib' folder.
 
-NOTES:
-At the moment, the warning/error messages that are produced during semantic analysis aren't very helpful.
-We report the problem's nature (by means of an exception in most cases), without specifying any information
-which would aid the programmer in fixing the problems being reported (file, line number etc.). This will be fixed in the future.
+To build any of the tests in the (aptly named) 'tests' folder, run:
+
+```bash
+$ ./edsgerc [options] [input_file]
+```
+
+from the root directory. Should compilation succeed, there will be an executable with the same name as the source
+file provided, inside the 'tests' directory.
+If an input file was not specified (using the -f or -i flags), then there will be an 'a.out' executable in the project's
+root directory.
+Calling the compiler with no options or an input file will display usage information.
