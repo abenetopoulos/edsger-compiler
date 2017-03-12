@@ -139,8 +139,8 @@ let () =
         if (!writeLLToStd || !writeAsmToStd) then
             ignore (Sys.command "rm .temp.ll .temp.s")
         else (
-            let delCommand = Printf.sprintf "rm %s %s" outName asmName in
-            ignore (Sys.command delCommand)
+            (*let delCommand = Printf.sprintf "rm %s %s" outName asmName in
+            ignore (Sys.command delCommand)*)
         )
         ;
 

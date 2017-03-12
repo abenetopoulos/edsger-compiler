@@ -3,7 +3,6 @@
 double globalDouble;
 int global[2];
 
-/*
 int test(int x) {
     int a;
 
@@ -35,7 +34,6 @@ int test(int x) {
     anotherFunc(42.1);
     return a;
 }
-*/
 
 int testOuter(int a) {
     int x;
@@ -68,9 +66,8 @@ void main() {
     }
 
     a = 17;
-    //testFunc();
-    //someFunc(a);
-    //i = test(a);
+    testFunc();
+    i = test(a);
     someLabel: for (i = 0; i < 10; i++) {
         a++;
         anotherLabel: for (j = 0; j < 42; j++) {

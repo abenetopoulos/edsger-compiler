@@ -1,0 +1,6 @@
+void main() {
+    double d;
+    int i;
+    i = -12;
+    d = -12.24;
+}

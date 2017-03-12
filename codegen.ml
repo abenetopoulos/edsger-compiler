@@ -467,7 +467,7 @@ and codegen_stmt stmt env arrayEnv labels parentFuncStrList generatedReturn bldr
                     (match labelOpt with
                      | None -> ignore (build_br afterthoughtBB bldr)
                      | Some str ->
-                        let targetBB = Hashtbl.find labels (str ^ "Continue") in
+                        let targetBB = Hashtbl.find labels (str ^ "Cont") in
                         ignore (build_br targetBB bldr)
                     );
                     acc
@@ -637,13 +637,17 @@ and codegen_expr expr env arrayEnv parentFuncStrList bldr =
              (*build_load ptrLLVal "tmp_load" bldr*)
          | UnaryPlus -> exprLLVal
          | UnaryMinus -> 
-            (match uExpr with
-             | EId _
-             | EArray _ ->
-                let loadedVal = build_load exprLLVal "tmp_load" bldr in
-                build_neg loadedVal "tmp_neg" bldr
-             | _ -> build_neg exprLLVal "tmp_neg" bldr
+            let llVal = 
+                (match uExpr with
+                 | EId _
+                 | EArray _ -> build_load exprLLVal "tmp_load" bldr
+                 | _ -> exprLLVal
             )
+            in
+            if ((type_of llVal) = int_type) then
+                build_neg llVal "tmp_neg" bldr
+            else
+                build_fneg llVal "tmp_fneg" bldr
          | UnaryNot -> 
             (match uExpr with
              | EId _

@@ -9,10 +9,19 @@ void main() {
     p = new int[100];
     pp = new int*[20];
 
-
     p[42] = 176;
+
+    for (a = 0; a < 100; a++) {
+        p[a] = a + 1;
+    }
+
     p = p + 1;
     delete pp;
 
-    writeString("Did not crash, did not quit\n");
+    writeString("Deleted pointer allocated through 'new', so still here\n");
+
+    delete p;
+    writeString("Deleted another pointer allocated through 'new'\n");
+    writeString("Will now re-delete a pointer, so will crash\n");
+    delete p;
 }

@@ -3,7 +3,7 @@
 #include "stdlib.h"
 
 int Initialize(byref int x) {
-    x = 42;
+    x = 4096;
 
     return x + 123;
 }
@@ -116,5 +116,6 @@ void main() {
     writeChar('\n');
 
     SomeFunc(16); 
+    FillAndPrint(x, a);
 
 }

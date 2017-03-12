@@ -4,8 +4,9 @@ void main() {
     int a;
     int i;
 
-    a = 17;
-    writeString("Hello there, agent #");
+    writeString("Enter ID#:");
+    a = readInteger();
+    writeString("Hello there, citizen #");
     writeInteger(a);
     writeChar('\n');
 }

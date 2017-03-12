@@ -1,0 +1,50 @@
+#include "stdio.h"
+ 
+ void main()
+ {
+     /* screen ( integer) coordinate */
+     int iX,iY;
+     int iXmax; 
+     int iYmax;
+     /* world ( double) coordinate = parameter plane*/
+     double Cx,Cy;
+     double CxMin;
+     double CxMax;
+     double CyMin;
+     double CyMax;
+     /* */
+     double PixelWidth;
+     double PixelHeight;
+
+     char temp_char;
+     /* Z=Zx+Zy*i  ;   Z0 = 0 */
+     double Zx, Zy;
+     double Zx2, Zy2; /* Zx2=Zx*Zx;  Zy2=Zy*Zy  */
+     /*  */
+     int Iteration;
+     int IterationMax;
+     /* bail-out value , radius of circle ;  */
+     double EscapeRadius;
+     double ER2;
+     iXmax = 160; 
+     iYmax = 70;
+     CxMin= 2.5;
+     CxMax= 1.5;
+     CyMin= - 2.0;
+     CyMax= 2.0;
+     PixelWidth=(CxMax-CxMin)/((double) iXmax);
+     PixelHeight=(CyMax-CyMin)/((double)iYmax);
+     IterationMax=200;
+     EscapeRadius=2.0;
+     ER2=EscapeRadius*EscapeRadius;
+     writeString("Mandel Process\n ");
+     writeString("#");
+     writeString("\n ");
+     writeInteger(iXmax);
+     writeString("\n ");
+     writeInteger(iYmax);
+     writeString("\n");
+     /* compute and write image data bytes to the file*/
+    
+     //return 0;
+ }
