@@ -14,6 +14,7 @@ let readFromStd : bool ref = ref false
 let writeLLToStd : bool ref = ref false
 let writeAsmToStd : bool ref = ref false
 let optimize : bool ref = ref false
+let keep : bool ref = ref false
 
 let get_args () =
     if Array.length Sys.argv > 1 then
@@ -22,6 +23,7 @@ let get_args () =
             if (a = "-i") then (readFromStd := true; writeAsmToStd := true; acc)
             else if (a = "-f") then (readFromStd := true; writeLLToStd := true; acc)
             else if (a = "-O") then (optimize := true; acc)
+            else if (a = "-keep") then (keep := true; acc)
             else (
                 let ext = String.sub a ((String.length a) - 4) 4 in
                 if (ext = ".eds") then 
@@ -36,9 +38,10 @@ let get_args () =
         let usageString = "edsgerc: A compiler for the Edsger language written in OCaml\n\n" ^
                            "Usage: edsgerc [options] [input_file]\n" ^
                            "Options:\n" ^
-                           "  -O\tOptimize generated code (equivalent to -O2 in gcc)\n" ^
-                           "  -i\tRead program from console, output assembly to console\n" ^
-                           "  -f\tRead program from console, output LLVM ir to console\n\n" ^
+                           "  -O\t Optimize generated code (equivalent to -O2 in clang)\n" ^
+                           "  -i\t Read program from console, output assembly to console\n" ^
+                           "  -f\t Read program from console, output LLVM ir to console\n" ^
+                           "  -keep  Tells the compiler not to delete the .ll and .s files generated during compilation (for debugging purposes)\n\n" ^
                            "If neither -i nor -f are used, the user should provide a .eds file containing the source code to be compiled\n"
         in
         (Printf.eprintf "%s" usageString; exit 1)
@@ -66,7 +69,6 @@ let () =
     try
         Parser.prog (Lexer.read (fname :: [])) lexbuf;
         check_ast !astTree;
-        (*print_ast !astTree;*)
         let llm = code_gen !astTree in
         (match (verify_module llm) with
          | None -> () (*Printf.printf "DEBUG: Module is correct\n"*)
@@ -93,10 +95,9 @@ let () =
 
         let optString = 
             if !optimize then "-O=2"
-            else ""
+            else "-O=0"
         in
         let llcCommand = Printf.sprintf "llc-3.5 %s -filetype=asm %s" optString outName in
-        (*let llcCommand = Printf.sprintf "/Volumes/Files/Developer/bin/llc %s -filetype=asm %s" optString outName in*)
         if (Sys.command llcCommand <> 0) then begin
             (*Printf.printf "DEBUG: llc could not compile our program\n";*)
             exit 1
@@ -120,9 +121,7 @@ let () =
             in
             let libName = "./stdlib/lib.a" in
             let libCheckerName = "./libchecker.a" in
-            (*let libName = "" in*)
             let clangCommand = Printf.sprintf "clang -g %s %s %s -o %s" asmName libCheckerName libName binName in
-            (*let clangCommand = Printf.sprintf "clang -g %s %s -o %s" asmName libName binName in*)
             if (Sys.command clangCommand <> 0) then begin
                 (*Printf.printf "DEBUG: Clang could not compile to binary\n";*)
                 exit 1
@@ -139,8 +138,10 @@ let () =
         if (!writeLLToStd || !writeAsmToStd) then
             ignore (Sys.command "rm .temp.ll .temp.s")
         else (
-            (*let delCommand = Printf.sprintf "rm %s %s" outName asmName in
-            ignore (Sys.command delCommand)*)
+            if (!keep = false) then (
+                let delCommand = Printf.sprintf "rm %s %s" outName asmName in
+                ignore (Sys.command delCommand)
+            )
         )
         ;
 

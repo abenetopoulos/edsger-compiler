@@ -1,11 +1,3 @@
-(*TODO:
-  - test everything!
-*)
-
-(*NOTE: 
-  - changed what unary deref returns, might cause issues, keep in mind [achilles, 6/9/16]
-*)
-
 open Llvm
 open Ast
 
@@ -21,7 +13,6 @@ let double_type = x86fp80_type llctx
 let bool_type = i1_type llctx
 let non_type = void_type llctx
 
-(*let extraArgs:(string, llvalue array) Hashtbl.t = Hashtbl.create 100*)
 let extraArgs:(string, string array) Hashtbl.t = Hashtbl.create 100
 
 type scope_type = SGlobal | SInternal
@@ -377,7 +368,7 @@ and codegen_stmt stmt env arrayEnv labels parentFuncStrList generatedReturn bldr
             ();
         position_at_end mergeBB bldr;
         truePossibleBlocks @ falsePossibleBlocks
-    | SFor (labelOption, initialization, condition, afterthought, stmt) -> (*this case now [15/9] seems a little toxic...*)
+    | SFor (labelOption, initialization, condition, afterthought, stmt) -> 
         (match initialization with
          | None -> ()
          | Some i -> ignore (codegen_expr i env arrayEnv parentFuncStrList bldr)
@@ -1182,7 +1173,7 @@ and generate_triple env scopeString bldr =
     let aux k v =
         if (k = "_retVal") then
             ()
-        else if ((String.length k) > 4 && (String.sub k 0 4 = "_ref" || (String.sub k 0 4 <> "_ref" && k.[0] = '_'))) then (*NOTE: this check looks like shit, will probably perform like shit*)
+        else if ((String.length k) > 4 && (String.sub k 0 4 = "_ref" || (String.sub k 0 4 <> "_ref" && k.[0] = '_'))) then 
             (*let valueToKeep = build_load v "tmp_load" bldr in*)
             let valueToKeep = v in
             Hashtbl.add auxTbl k (valueToKeep, element_type (type_of valueToKeep))
