@@ -1,11 +1,10 @@
 ## Edsger's Caml
 ### A compiler for the Edsger programming language, written in OCaml
 
-National Technical University of Athens;
-Compilers 2016, Flow L;
+National Technical University of Athens
+Compilers 2016, Flow L
 
-_Achilles Benetopoulos_
-_Emmanouil Theodosis_ 
+_Achilles Benetopoulos_ & _Emmanouil Theodosis_ 
 
 Dependencies:
 - LLVM ocaml bindings
